@@ -45,11 +45,14 @@ def format_message(msg): #only makes it in "human readable" format(works)
     return msg
 
 def flip_bit(msg): #msg = fault protected message, this function flips 1 or 2 random bits
+    flipped_msg = np.copy(msg)
     number_of_bitflips = random.choice([1,2])
+
     for i in range(number_of_bitflips):
-        flip_index = random.randint(0, len(msg)-1)
-        msg[flip_index] = not msg[flip_index]
-    return msg #can allso return 0 bitflips as the same can be flipped twise
+        flip_index = random.randint(0, len(flipped_msg)-1)
+        flipped_msg[flip_index] = not flipped_msg[flip_index]
+
+    return flipped_msg #can allso return 0 bitflips as the same can be flipped twise
 
 def fault_correction(msg):
     fault_index = 0
@@ -58,45 +61,44 @@ def fault_correction(msg):
         if msg[i] == 1:
             fault_index = np.bitwise_xor(fault_index, i)
     
-    msg[fault_index] = not msg[fault_index]#correcting fault
+    message_parity = np.sum(msg) % 2
+    if (message_parity == 1):
+        msg[fault_index] = not msg[fault_index]#correcting fault
+        #print("error fixed one error")
+        return msg, 0
     
-
-    message_parity = np.sum(msg)%2
-    print(message_parity)
-    if fault_index == 0 and message_parity == 0:
-        print("There was no fault")
-        return(msg)
-
-    elif fault_index != 0 and message_parity == 0:
-        print("fault detected and corrected")
-        return(msg)
+    elif (message_parity == 0 and fault_index != 0):
+        #print("there were two errors")
+        return None, 1
     
     else:
-        print("there were two errors")
-        return 0
+        #print("there were no errors")
+        return msg, 2
 
 
 
+def sick_test_script(power):
+    test_result = np.array([0,0,0])
 
+    for i in range(10000):
+        msg = create_message(power)
+        protected_message = fault_protect(msg)
+        bit_flipped_massege = flip_bit(protected_message)
+        corrected_msg, index = fault_correction(bit_flipped_massege)
+        test_result[index] += 1
 
+        if index != 1:
+            if (protected_message.all() != corrected_msg.all()):
+                print("ERROR something is really wrong")
+                print("protected message is = \n", format_message(protected_message),"\n")
+                print("fault corrected message is = \n", format_message(corrected_msg))
+                return 0
 
-msg = create_message(pow)
-print(msg)
+    
+    print(test_result)
+    return 1
 
-msg = fault_protect(msg)
-print(msg)
-
-formatted_msg = format_message(msg)
-print(formatted_msg,"\n")
-
-
-"""msg = flip_bit(msg)#flip a bit
-formatted_msg = format_message(msg)
-print(formatted_msg, "\n")"""
-
-fault_corrected_msg = fault_correction(msg)
-if type(fault_corrected_msg) == np.ndarray:
-    print(format_message(fault_corrected_msg))
+sick_test_script(pow)
 
 
 
