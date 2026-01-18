@@ -16,6 +16,11 @@ FetchContent_Declare(
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
+# For plotting using Matplot++
+FetchContent_Declare(matplotplusplus
+        GIT_REPOSITORY https://github.com/alandefreitas/matplotplusplus.git
+        GIT_TAG master)
+FetchContent_MakeAvailable(matplotplusplus)
 
 # TX
 add_executable(radio_tx src/main_tx.cpp src/core/fir.cpp)
@@ -30,10 +35,12 @@ add_executable(
   unittests
   tests/core_test.cpp
   src/core/fir.cpp
+  src/core/root_raised_cosine.cpp
 )
 target_link_libraries(
   unittests
   GTest::gtest_main
+  matplot
 )
 
 include(GoogleTest)

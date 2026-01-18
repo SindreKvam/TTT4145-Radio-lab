@@ -1,7 +1,12 @@
 
 #include "../src/core/fir.h"
+#include "../src/core/root_raised_cosine.h"
+
+#include <matplot/matplot.h>
+
 #include <cstdint>
 #include <gtest/gtest.h>
+#include <iostream>
 #include <vector>
 
 TEST(Core, FirFilter) {
@@ -48,4 +53,36 @@ TEST(Core, FirFilterConvolution) {
     for (std::uint16_t i = 0; i < output.size(); ++i) {
         EXPECT_EQ(output[i], expected_output[i]);
     }
+}
+
+TEST(Core, RootRaisedCosine) {
+
+    int sps = 2; // signals per second
+    int span = 12;
+
+    int length = sps * span + 1;
+    std::vector<float> time(length, 0.0);
+
+    for (std::uint16_t i = 0; i < length; ++i) {
+        time[i] = (i - span * sps / 2.0) / sps;
+    }
+
+    RootRaisedCosine rrc_fir1 = RootRaisedCosine(1.0, span, sps);
+    std::vector<float> coefficients1 = rrc_fir1.get_coefficients();
+
+    RootRaisedCosine rrc_fir0_5 = RootRaisedCosine(0.5, span, sps);
+    std::vector<float> coefficients0_5 = rrc_fir0_5.get_coefficients();
+
+    RootRaisedCosine rrc_fir0_75 = RootRaisedCosine(0.75, span, sps);
+    std::vector<float> coefficients0_75 = rrc_fir0_75.get_coefficients();
+
+    auto f = matplot::figure(true);
+    matplot::hold("on");
+    matplot::stem(time, coefficients1);
+    matplot::stem(time, coefficients0_5);
+    matplot::stem(time, coefficients0_75);
+    matplot::hold("off");
+    matplot::legend({"\\beta = 1.0", "\\beta = 0.5", "\\beta = 0.75"});
+    matplot::title("Root Raised Cosine impulse response");
+    matplot::save("test-artifacts/RRC_Coefficients.svg");
 }
