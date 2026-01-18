@@ -2,6 +2,8 @@
 build
 Testing
 
+.DS_Store
+
 # Python
 venv
 env
