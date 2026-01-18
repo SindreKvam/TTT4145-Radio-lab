@@ -82,7 +82,7 @@ TEST(Core, RootRaisedCosine) {
     matplot::stem(time, coefficients0_5);
     matplot::stem(time, coefficients0_75);
     matplot::hold("off");
-    matplot::legend({"\\beta = 1.0", "\\beta = 0.5", "\\beta = 0.75"});
+    matplot::legend({"β = 1.0", "β = 0.5", "β = 0.75"});
     matplot::title("Root Raised Cosine impulse response");
     matplot::save("test-artifacts/RRC_Coefficients.svg");
 }
