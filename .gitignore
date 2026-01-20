@@ -1,6 +1,7 @@
 
 build
 Testing
+*.exe
 
 .DS_Store
 
