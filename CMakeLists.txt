@@ -1,5 +1,5 @@
 
-cmake_minimum_required(VERSION 4.2)
+cmake_minimum_required(VERSION 3.22)
 project(RadioLab)
 
 
@@ -34,8 +34,11 @@ enable_testing()
 add_executable(
   unittests
   tests/core_test.cpp
+  tests/tx_tests.cpp
   src/core/fir.cpp
   src/core/root_raised_cosine.cpp
+  src/tx/fault_protection.cpp
+  src/tx/modulators.cpp
 )
 target_link_libraries(
   unittests
