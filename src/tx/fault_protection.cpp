@@ -57,9 +57,9 @@ void fault_protect_frame(std::vector<uint16_t>message){ //message must be format
     return;
 }
 
-int main(){
-    std::srand(std::time(0));
-    for (int i = 0; i < 100; i++){
-        generate_random_message(64);
-    }
-}
+// int main(){
+//     std::srand(std::time(0));
+//     for (int i = 0; i < 100; i++){
+//         generate_random_message(64);
+//     }
+// }

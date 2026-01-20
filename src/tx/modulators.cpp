@@ -16,11 +16,11 @@ std::vector<double> MPSK(uint16_t symbol, uint16_t number_of_symbols){
     return I_and_Q;
 }
 
-int main(){
-    std::vector<double>polar = MPSK(0b001,8);
-    print_vector(polar);
-    polar = MPSK(0b100,8);
-    print_vector(polar);
-    polar = MPSK(0b000,8);
-    print_vector(polar);
-}
+// int main(){
+//     std::vector<double>polar = MPSK(0b001,8);
+//     print_vector(polar);
+//     polar = MPSK(0b100,8);
+//     print_vector(polar);
+//     polar = MPSK(0b000,8);
+//     print_vector(polar);
+// }
