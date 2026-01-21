@@ -24,17 +24,21 @@ FetchContent_MakeAvailable(matplotplusplus)
 
 # TX
 add_executable(radio_tx src/main_tx.cpp src/core/fir.cpp)
+target_link_libraries(radio_tx iio)
 
 # RX
-add_executable(radio_rx src/main_rx.cpp src/core/fir.cpp)
+add_executable(radio_rx src/main_rx.cpp src/core/fir.cpp src/radio/radio_rx.cpp)
+target_link_libraries(radio_rx iio matplot)
 
-
+# Testing
 enable_testing()
 
 add_executable(
   unittests
+  # Test files
   tests/core_test.cpp
   tests/tx_tests.cpp
+  # Source files
   src/core/fir.cpp
   src/core/root_raised_cosine.cpp
   src/tx/fault_protection.cpp
