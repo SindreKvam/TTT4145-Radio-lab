@@ -1,7 +1,11 @@
 
+# Output folders
 build
 Testing
+
+# Compiled applications
 *.exe
+*.out
 
 .DS_Store
 
