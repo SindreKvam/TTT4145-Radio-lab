@@ -2,12 +2,14 @@
 # Output folders
 build
 Testing
+.cache
 
 # Compiled applications
 *.exe
 *.out
 
 .DS_Store
+compile_commands.json
 
 # Python
 venv
