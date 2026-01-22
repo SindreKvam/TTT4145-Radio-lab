@@ -38,7 +38,7 @@ Rx::Rx() {
     iio_channel_enable(rx0_q);
 
     // Create buffer, consider cyclic buffer?
-    rxbuf = iio_device_create_buffer(dev, 4096, false);
+    rxbuf = iio_device_create_buffer(dev, RX_BUFFER_SIZE, RX_CIRCULAR_BUFFER);
     if (!rxbuf) {
         perror("Could not create RX buffer");
         throw std::runtime_error("Could not create RX buffer");

@@ -1,7 +1,8 @@
 #pragma once
 
-// #include <array>
+#include <array>
 #include <iio.h>
+#include "config.h"
 
 class Rx {
   public:
@@ -10,8 +11,8 @@ class Rx {
 
     int buffer_refill();
 
-    // std::array<int16_t, 4096> i_buf;
-    // std::array<int16_t, 4096> q_buf;
+    std::array<int16_t, RX_BUFFER_SIZE> i_buf;
+    std::array<int16_t, RX_BUFFER_SIZE> q_buf;
 
   private:
     struct iio_context *ctx;
