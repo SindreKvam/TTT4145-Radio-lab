@@ -24,10 +24,12 @@ FetchContent_MakeAvailable(matplotplusplus)
 
 # TX
 add_executable(radio_tx src/main_tx.cpp src/core/fir.cpp)
+target_include_directories(radio_tx PUBLIC include)
 target_link_libraries(radio_tx iio)
 
 # RX
 add_executable(radio_rx src/main_rx.cpp src/core/fir.cpp src/radio/radio_rx.cpp)
+target_include_directories(radio_rx PUBLIC include)
 target_link_libraries(radio_rx iio matplot)
 
 # Testing

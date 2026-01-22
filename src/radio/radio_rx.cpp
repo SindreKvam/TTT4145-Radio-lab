@@ -1,6 +1,9 @@
 
 #include "radio_rx.h"
+#include "config.h"
+#include <iio.h>
 #include <iostream>
+#include <stdexcept>
 
 Rx::Rx() {
 
@@ -9,6 +12,7 @@ Rx::Rx() {
     ctx = iio_create_context_from_uri("ip:192.168.2.1");
     if (!ctx) {
         perror("Could not connect to the ADALM PLUTO");
+        throw std::runtime_error("Could not connect to ADALM PLUTO");
     }
     phy = iio_context_find_device(ctx, "ad9361-phy");
     if (!phy) {
@@ -17,11 +21,11 @@ Rx::Rx() {
 
     iio_channel_attr_write_longlong(
         iio_device_find_channel(phy, "altvoltage0", true), "frequency",
-        2400000000); /* RX LO frequency 2.4GHz */
+        RX_LO_FREQUENCY_DEFAULT); /* RX LO frequency 2.4GHz */
 
     iio_channel_attr_write_longlong(
         iio_device_find_channel(phy, "voltage0", false), "sampling_frequency",
-        5000000); /* RX baseband rate 5 MSPS */
+        RX_SAMPLING_RATE_DEFAULT); /* RX baseband rate 5 MSPS */
 
     // Find the RX device
     dev = iio_context_find_device(ctx, "cf-ad9361-lpc");
@@ -37,14 +41,30 @@ Rx::Rx() {
     rxbuf = iio_device_create_buffer(dev, 4096, false);
     if (!rxbuf) {
         perror("Could not create RX buffer");
-        // shutdown();
+        throw std::runtime_error("Could not create RX buffer");
     }
 }
 
 Rx::~Rx() {
 
-    iio_buffer_destroy(rxbuf);
-    iio_context_destroy(ctx);
+    std::cout << "Destroying buffers" << std::endl;
+    if (rxbuf) {
+        iio_buffer_destroy(rxbuf);
+    }
+
+    std::cout << "Disabling streaming channels" << std::endl;
+    if (rx0_i) {
+        iio_channel_disable(rx0_i);
+    }
+    if (rx0_q) {
+        iio_channel_disable(rx0_q);
+    }
+
+    std::cout << "Destroying context" << std::endl;
+    if (ctx) {
+        iio_context_destroy(ctx);
+    }
+    exit(0);
 }
 
 int Rx::buffer_refill() {
