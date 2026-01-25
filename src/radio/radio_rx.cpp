@@ -8,7 +8,7 @@
 Rx::Rx() {
 
     // Connect the ADALM PLUTO
-    std::cout << "Connecting to the ADALM PLUTO" << std::endl;
+    std::cout << "RX: Connecting to the ADALM PLUTO" << std::endl;
     ctx = iio_create_context_from_uri("ip:192.168.2.1");
     if (!ctx) {
         perror("Could not connect to the ADALM PLUTO");
@@ -32,7 +32,7 @@ Rx::Rx() {
     rx0_i = iio_device_find_channel(dev, "voltage0", 0);
     rx0_q = iio_device_find_channel(dev, "voltage1", 0);
 
-    std::cout << "Enable I and Q channels" << std::endl;
+    std::cout << "RX: Enable I and Q channels" << std::endl;
     // Enable I and Q channels
     iio_channel_enable(rx0_i);
     iio_channel_enable(rx0_q);
@@ -47,12 +47,12 @@ Rx::Rx() {
 
 Rx::~Rx() {
 
-    std::cout << "Destroying buffers" << std::endl;
+    std::cout << "RX: Destroying buffers" << std::endl;
     if (rxbuf) {
         iio_buffer_destroy(rxbuf);
     }
 
-    std::cout << "Disabling streaming channels" << std::endl;
+    std::cout << "RX: Disabling streaming channels" << std::endl;
     if (rx0_i) {
         iio_channel_disable(rx0_i);
     }
@@ -60,7 +60,7 @@ Rx::~Rx() {
         iio_channel_disable(rx0_q);
     }
 
-    std::cout << "Destroying context" << std::endl;
+    std::cout << "RX: Destroying context" << std::endl;
     if (ctx) {
         iio_context_destroy(ctx);
     }
@@ -77,12 +77,30 @@ int Rx::buffer_refill() {
     p_inc = iio_buffer_step(rxbuf);
     p_end = iio_buffer_end(rxbuf);
 
+    uint16_t idx = 0;
     for (p_dat = iio_buffer_first(rxbuf, rx0_i); p_dat < p_end;
          p_dat += p_inc, t_dat += p_inc) {
         const int16_t i = ((int16_t *)p_dat)[0]; // Real (I)
         const int16_t q = ((int16_t *)p_dat)[1]; // Imag (Q)
 
-        /* Process here */
         std::cout << "I: " << i << ", Q: " << q << std::endl;
+        i_buf[idx] = i;
+        q_buf[idx] = q;
+        ++idx;
     }
+}
+
+void Rx::rx_loop(std::queue<std::array<int16_t, RX_BUFFER_SIZE>> &i_data_queue,
+                 std::queue<std::array<int16_t, RX_BUFFER_SIZE>> &q_data_queue,
+                 bool &stop) {
+
+    while (!stop) {
+
+        buffer_refill();
+
+        i_data_queue.push(i_buf);
+        q_data_queue.push(q_buf);
+    }
+
+    std::cout << "RX: loop stopped" << std::endl;
 }

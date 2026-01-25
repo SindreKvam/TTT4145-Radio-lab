@@ -1,8 +1,9 @@
 #pragma once
 
+#include "config.h"
 #include <array>
 #include <iio.h>
-#include "config.h"
+#include <queue>
 
 class Rx {
   public:
@@ -10,6 +11,9 @@ class Rx {
     ~Rx();
 
     int buffer_refill();
+    void rx_loop(std::queue<std::array<int16_t, RX_BUFFER_SIZE>> &i_data_queue,
+                 std::queue<std::array<int16_t, RX_BUFFER_SIZE>> &q_data_queue,
+                 bool &stop);
 
     std::array<int16_t, RX_BUFFER_SIZE> i_buf;
     std::array<int16_t, RX_BUFFER_SIZE> q_buf;
