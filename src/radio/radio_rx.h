@@ -10,7 +10,7 @@ class Rx {
     Rx();
     ~Rx();
 
-    int buffer_refill();
+    void buffer_refill();
     void rx_loop(std::queue<std::array<int16_t, RX_BUFFER_SIZE>> &i_data_queue,
                  std::queue<std::array<int16_t, RX_BUFFER_SIZE>> &q_data_queue,
                  bool &stop);

@@ -67,7 +67,7 @@ Rx::~Rx() {
     exit(0);
 }
 
-int Rx::buffer_refill() {
+void Rx::buffer_refill() {
 
     void *p_dat, *p_end, *t_dat;
     ptrdiff_t p_inc;
