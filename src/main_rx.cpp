@@ -10,8 +10,8 @@ int main(int argc, char **argv) {
     Rx rx = Rx();
 
     // Instantiate queues for storing data
-    std::queue<std::array<int16_t, RX_BUFFER_SIZE>> i_queue;
-    std::queue<std::array<int16_t, RX_BUFFER_SIZE>> q_queue;
+    std::queue<std::array<int16_t, I_Q_CHANNEL_BUFFER_SIZE>> i_queue;
+    std::queue<std::array<int16_t, I_Q_CHANNEL_BUFFER_SIZE>> q_queue;
     bool stop = false;
 
     // Start threads

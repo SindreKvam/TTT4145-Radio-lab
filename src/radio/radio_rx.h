@@ -11,12 +11,13 @@ class Rx {
     ~Rx();
 
     void buffer_refill();
-    void rx_loop(std::queue<std::array<int16_t, RX_BUFFER_SIZE>> &i_data_queue,
-                 std::queue<std::array<int16_t, RX_BUFFER_SIZE>> &q_data_queue,
-                 bool &stop);
+    void rx_loop(
+        std::queue<std::array<int16_t, I_Q_CHANNEL_BUFFER_SIZE>> &i_data_queue,
+        std::queue<std::array<int16_t, I_Q_CHANNEL_BUFFER_SIZE>> &q_data_queue,
+        bool &stop);
 
-    std::array<int16_t, RX_BUFFER_SIZE> i_buf;
-    std::array<int16_t, RX_BUFFER_SIZE> q_buf;
+    std::array<int16_t, I_Q_CHANNEL_BUFFER_SIZE> i_buf;
+    std::array<int16_t, I_Q_CHANNEL_BUFFER_SIZE> q_buf;
 
   private:
     struct iio_context *ctx;

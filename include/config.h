@@ -8,3 +8,5 @@
 
 #define RX_BUFFER_SIZE 4096
 #define RX_CIRCULAR_BUFFER false
+
+#define I_Q_CHANNEL_BUFFER_SIZE (RX_BUFFER_SIZE / 2)
