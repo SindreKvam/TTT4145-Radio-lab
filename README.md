@@ -11,7 +11,7 @@ Formatting is done using `clang-format`.
 
 On debian based linux distros, install the following dependencies:
 ```
-sudo apt install gnuplot libiio-dev libiio-utils
+sudo apt install gnuplot libiio-dev libiio-utils qtbase5-dev
 ```
 
 ## Building and testing

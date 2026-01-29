@@ -1,12 +1,15 @@
 
 #include "config.h"
+#include "gui/window.h"
 #include "radio/radio_rx.h"
+#include <QApplication>
 #include <iostream>
 #include <queue>
 #include <thread>
 
 int main(int argc, char **argv) {
 
+    QApplication app(argc, argv);
     Rx rx = Rx();
 
     // Instantiate queues for storing data
@@ -17,6 +20,13 @@ int main(int argc, char **argv) {
     // Start threads
     std::thread t_rx(&Rx::rx_loop, &rx, std::ref(i_queue), std::ref(q_queue),
                      std::ref(stop));
+
+    // GUI
+    MainWindow w(std::ref(i_queue), std::ref(q_queue));
+    // w.resize(1000, 600);
+    w.show();
+
+    int rc = app.exec();
 
     // while (true) {
     //
@@ -46,5 +56,5 @@ int main(int argc, char **argv) {
 
     std::cout << "Main loop exited. Quitting" << std::endl;
 
-    return 0;
+    return rc;
 }

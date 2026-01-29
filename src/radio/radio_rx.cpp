@@ -99,8 +99,13 @@ void Rx::rx_loop(
 
         buffer_refill();
 
-        i_data_queue.push(i_buf);
-        q_data_queue.push(q_buf);
+        if (i_data_queue.size() < RX_BUFFER_SIZE &&
+            q_data_queue.size() < RX_BUFFER_SIZE) {
+            i_data_queue.push(i_buf);
+            q_data_queue.push(q_buf);
+        } else {
+            std::cout << "Incoming data dropped" << std::endl;
+        }
     }
 
     std::cout << "RX: loop stopped" << std::endl;
