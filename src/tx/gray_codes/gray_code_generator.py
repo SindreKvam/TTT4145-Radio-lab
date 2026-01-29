@@ -2,8 +2,8 @@ import numpy as np
 import csv
 import os
 
-os.chdir(r"C:\NTNU\Vaar2026\radioCom\Project\TTT4145-Radio-lab\src\tx\gray_codes")
-print("Working directory:", os.getcwd())
+#os.chdir(r"C:\NTNU\Vaar2026\radioCom\Project\TTT4145-Radio-lab\src\tx\gray_codes")
+#print("Working directory:", os.getcwd())
 
 def generate_graycode_grid(size = 16):
     horisontal = np.zeros(int(np.sqrt(size)),dtype=int)
@@ -15,6 +15,8 @@ def generate_graycode_grid(size = 16):
     vertical = np.left_shift(vertical,int(np.log2(size)/2))
 
     greycode_grid = horisontal[:,None] + vertical[None,:]
+
+    print(greycode_grid)
 
     return greycode_grid
 
@@ -30,8 +32,8 @@ def store_grid_in_csv(grid):
             for row_index in range(collumns):
                 writer.writerow({
                     'graycode': int(grid[column_index][row_index]),
-                    'column': column_index,
-                    'row': row_index
+                    'column': column_index, #x axis
+                    'row': row_index        #y axis
                 })
 
 
