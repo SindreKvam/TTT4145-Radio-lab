@@ -12,6 +12,9 @@
 #include <queue>
 #include <thread>
 
+static void process_block(const std::int16_t *data, std::size_t len,
+                          std::uint64_t seq);
+
 static void rx_thread_fn(PlutoRx *rx, RxRingBuffer &free_q,
                          RxRingBuffer &filled_q, std::atomic<bool> &running) {
 
@@ -40,7 +43,7 @@ static void rx_thread_fn(PlutoRx *rx, RxRingBuffer &free_q,
         }
 
         std::memcpy(slab->data, p_dat, nbytes);
-        slab->len = nbytes;
+        slab->len = nbytes / 2; // Length in 16-bit chunks instead of bytes
         slab->seq = seq++;
 
         while (!fifo_push(filled_q, slab)) {
@@ -51,15 +54,6 @@ static void rx_thread_fn(PlutoRx *rx, RxRingBuffer &free_q,
     }
 }
 
-static void process_block(const std::int16_t *data, std::size_t len,
-                          std::uint64_t seq) {
-    (void)data;
-    (void)len;
-    (void)seq;
-    // Convert to complex / DSP / write to file, etc.
-    // Keep RX thread pure-copy; do work here.
-}
-
 static void worker_thread_fn(PlutoRx *rx, RxRingBuffer &free_q,
                              RxRingBuffer &filled_q,
                              std::atomic<bool> &running) {
@@ -68,8 +62,9 @@ static void worker_thread_fn(PlutoRx *rx, RxRingBuffer &free_q,
         RxSlab *slab = nullptr;
 
         while (!fifo_pop(filled_q, slab)) {
-            if (!running.load(std::memory_order_relaxed))
+            if (!running.load(std::memory_order_relaxed)) {
                 return;
+            }
         }
 
         process_block(slab->data, slab->len, slab->seq);
@@ -77,10 +72,42 @@ static void worker_thread_fn(PlutoRx *rx, RxRingBuffer &free_q,
         slab->len = 0;
 
         while (!fifo_push(free_q, slab)) {
-            if (!running.load(std::memory_order_relaxed))
+            if (!running.load(std::memory_order_relaxed)) {
                 return;
+            }
         }
     }
+}
+
+static void process_block(const std::int16_t *data, std::size_t len,
+                          std::uint64_t seq) {
+
+    // TODO: Send data through FIR filter
+
+    // std::cout << "New data" << std::endl;
+    // for (int idx = 0; idx < len; ++idx) {
+    //     std::cout << data[idx] << std::endl;
+    // }
+
+    // Instantiate buffers with macros instead of using "len"
+    // So that the arrays are preallocated
+    int16_t i_buf[SLAB_BYTES / 4];
+    int16_t q_buf[SLAB_BYTES / 4];
+
+    // Separate I and Q channels into own blocks
+    for (int idx = 0, jdx = 0; idx < len; idx += 2, jdx++) {
+        i_buf[jdx] = data[idx];
+        q_buf[jdx] = data[idx + 1];
+    }
+
+    // We are now ready to create a constellation plot of the received data
+    // We would assume that the constellation plot is rotating etc.
+
+    // PLL stuff -> updated constellation
+
+    (void)data;
+    (void)len;
+    (void)seq;
 }
 
 static void init_storage(RxSlab *slabs, RxRingBuffer &free_q) {
@@ -113,11 +140,6 @@ int main(int argc, char **argv) {
 
     // Create rx session
     PlutoRx rx = PlutoRx(session, {});
-
-    // Instantiate queues for storing data
-    std::queue<std::array<int16_t, I_Q_CHANNEL_BUFFER_SIZE>> i_queue;
-    std::queue<std::array<int16_t, I_Q_CHANNEL_BUFFER_SIZE>> q_queue;
-    bool stop = false;
 
     // Start threads
     std::thread t_rx(rx_thread_fn, &rx, std::ref(free_q), std::ref(filled_q),

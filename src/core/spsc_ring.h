@@ -5,8 +5,8 @@
 #include <atomic>
 #include <cstdio>
 
-// Multiply by 2 since buffer size is in 32-bit words.
-// While we want to store in int16_t
+// Multiply by 4 since buffer size is in 32-bit words.
+// While we want to know how many bytes we receive.
 #define SLAB_BYTES (RX_BUFFER_SIZE * 4)
 #define SLAB_COUNT 16
 #define FIFO_CAPACITY (SLAB_COUNT + 1)
