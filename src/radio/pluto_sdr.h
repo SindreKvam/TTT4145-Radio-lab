@@ -36,6 +36,15 @@ class PlutoRx {
     PlutoRx(std::shared_ptr<PlutoSdr> session, streamConfig cfg);
     ~PlutoRx();
 
+    /**
+     * @brief Receive data from Adalm Pluto.
+     *
+     * @param p_dat pointer to the start of data.
+     * @param p_end pointer to the end of data.
+     * @param p_inc increment size between symbols.
+     *
+     * @return Number of bytes placed in buffer.
+     */
     size_t receive(void *&p_dat, void *&p_end, ptrdiff_t &p_inc);
 
   private:

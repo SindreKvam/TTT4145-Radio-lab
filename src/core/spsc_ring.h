@@ -19,6 +19,14 @@ struct RxSlab {
     uint64_t seq = 0;
 };
 
+/**
+ * @brief RxRingBuffer is a struct that contains two atomic variables for
+ * thread-safety.
+ *
+ * The RxRingBuffer is a so-called SPSC - Single producer single consumer loop
+ * that allows for two threads to share data between each others.
+ * it implements an array of pointers that should point to preallocated RxSlabs
+ */
 struct RxRingBuffer {
     RxSlab *slabs[FIFO_CAPACITY];
     // Consumer

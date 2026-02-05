@@ -17,3 +17,7 @@ env
 .venv
 .env
 
+# Doxygen output
+html
+latex
+

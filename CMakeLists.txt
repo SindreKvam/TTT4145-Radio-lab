@@ -45,6 +45,7 @@ add_executable(radio_rx
     src/gui/window.cpp
     src/gui/qcustomplot.cpp
 )
+# Automoc is required for Qt ¯\_(ツ)_/¯
 set_target_properties(radio_rx PROPERTIES AUTOMOC ON)
 target_include_directories(radio_rx PUBLIC include src)
 target_link_libraries(radio_rx iio matplot Qt5::Widgets Qt5::PrintSupport)

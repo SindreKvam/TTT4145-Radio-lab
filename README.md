@@ -6,6 +6,8 @@ establish a connection between two ADALM-PLUTO software defined radios.
 ## Development
 
 Formatting is done using `clang-format`.
+Generate documentaion by running the following command while in the root directory: 
+`doxygen Doxyfile`. Requires doxygen to be installed first.
 
 ## Requirements
 
