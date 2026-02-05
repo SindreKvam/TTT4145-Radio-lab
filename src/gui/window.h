@@ -1,6 +1,7 @@
 #pragma once
 
 #include "config.h"
+#include "core/spsc_ring.h"
 #include "qcustomplot.h"
 #include <QMainWindow>
 #include <QTimer>
@@ -8,29 +9,24 @@
 #include <QWidget>
 #include <array>
 #include <cstdint>
-#include <queue>
+#include <memory>
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
   public:
-    MainWindow(
-        std::queue<std::array<int16_t, I_Q_CHANNEL_BUFFER_SIZE>> &i_queue,
-        std::queue<std::array<int16_t, I_Q_CHANNEL_BUFFER_SIZE>> &q_queue);
+    MainWindow(RxRingBuffer &free_q, RxRingBuffer &filled_q);
 
   private slots:
     void onTick();
 
   private:
-    void updatePlot();
+    void setupUi();
+    void updatePlots(const int16_t *data, size_t len);
 
+    RxRingBuffer &free_q_;
+    RxRingBuffer &filled_q_;
     QTimer timer;
-    std::queue<std::array<int16_t, I_Q_CHANNEL_BUFFER_SIZE>> &i_queue;
-    std::queue<std::array<int16_t, I_Q_CHANNEL_BUFFER_SIZE>> &q_queue;
 
-    std::array<int16_t, I_Q_CHANNEL_BUFFER_SIZE> i_front{};
-    std::array<int16_t, I_Q_CHANNEL_BUFFER_SIZE> q_front{};
-
-    QCustomPlot *plot = nullptr;
-    QCPGraph *iGraph = nullptr;
-    QCPGraph *qGraph = nullptr;
+    QCustomPlot *timePlot = nullptr;
+    QCustomPlot *constellationPlot = nullptr;
 };

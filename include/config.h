@@ -6,7 +6,7 @@
 #define RX_SAMPLING_RATE_DEFAULT MHZ(5.0)
 #define RX_LO_FREQUENCY_DEFAULT GHZ(2.4)
 
-#define RX_BUFFER_SIZE 8 /* 4096 */
+#define RX_BUFFER_SIZE 1024 /* 8, 4096 */
 #define RX_CIRCULAR_BUFFER false
 
 #define RX_QUEUE_SIZE 3

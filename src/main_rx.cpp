@@ -9,11 +9,11 @@
 #include <cstring>
 #include <iostream>
 #include <memory>
-#include <queue>
 #include <thread>
 
 static void process_block(const std::int16_t *data, std::size_t len,
-                          std::uint64_t seq);
+                          std::uint64_t seq, RxRingBuffer &gui_free_q,
+                          RxRingBuffer &gui_filled_q);
 
 static void rx_thread_fn(PlutoRx *rx, RxRingBuffer &free_q,
                          RxRingBuffer &filled_q, std::atomic<bool> &running) {
@@ -27,7 +27,6 @@ static void rx_thread_fn(PlutoRx *rx, RxRingBuffer &free_q,
 
         // Get an empty slab
         while (!fifo_pop(free_q, slab)) {
-            std::cout << "There are no empty slabs" << std::endl;
             if (!running.load(std::memory_order_relaxed)) {
                 return;
             }
@@ -55,8 +54,9 @@ static void rx_thread_fn(PlutoRx *rx, RxRingBuffer &free_q,
 }
 
 static void worker_thread_fn(PlutoRx *rx, RxRingBuffer &free_q,
-                             RxRingBuffer &filled_q,
-                             std::atomic<bool> &running) {
+                             RxRingBuffer &filled_q, std::atomic<bool> &running,
+                             RxRingBuffer &gui_free_q,
+                             RxRingBuffer &gui_filled_q) {
 
     while (running.load(std::memory_order_relaxed)) {
         RxSlab *slab = nullptr;
@@ -67,7 +67,8 @@ static void worker_thread_fn(PlutoRx *rx, RxRingBuffer &free_q,
             }
         }
 
-        process_block(slab->data, slab->len, slab->seq);
+        process_block(slab->data, slab->len, slab->seq, gui_free_q,
+                      gui_filled_q);
 
         slab->len = 0;
 
@@ -80,39 +81,26 @@ static void worker_thread_fn(PlutoRx *rx, RxRingBuffer &free_q,
 }
 
 static void process_block(const std::int16_t *data, std::size_t len,
-                          std::uint64_t seq) {
+                          std::uint64_t seq, RxRingBuffer &gui_free_q,
+                          RxRingBuffer &gui_filled_q) {
 
-    // TODO: Send data through FIR filter
-
-    // std::cout << "New data" << std::endl;
-    // for (int idx = 0; idx < len; ++idx) {
-    //     std::cout << data[idx] << std::endl;
-    // }
-
-    // Instantiate buffers with macros instead of using "len"
-    // So that the arrays are preallocated
-    int16_t i_buf[SLAB_BYTES / 4];
-    int16_t q_buf[SLAB_BYTES / 4];
-
-    // Separate I and Q channels into own blocks
-    for (int idx = 0, jdx = 0; idx < len; idx += 2, jdx++) {
-        i_buf[jdx] = data[idx];
-        q_buf[jdx] = data[idx + 1];
+    // Pass the data to the GUI
+    RxSlab *gui_slab = nullptr;
+    if (fifo_pop(gui_free_q, gui_slab)) {
+        std::memcpy(gui_slab->data, data, len * sizeof(int16_t));
+        gui_slab->len = len;
+        gui_slab->seq = seq;
+        fifo_push(gui_filled_q, gui_slab);
     }
-
-    // We are now ready to create a constellation plot of the received data
-    // We would assume that the constellation plot is rotating etc.
-
-    // PLL stuff -> updated constellation
 
     (void)data;
     (void)len;
     (void)seq;
 }
 
-static void init_storage(RxSlab *slabs, RxRingBuffer &free_q) {
+static void init_storage(RxSlab *slabs, size_t count, RxRingBuffer &free_q) {
     // Put all slabs into free queue
-    for (std::size_t i = 0; i < SLAB_COUNT; ++i) {
+    for (std::size_t i = 0; i < count; ++i) {
         slabs[i].len = 0;
         slabs[i].seq = 0;
         // At startup it must succeed
@@ -123,14 +111,20 @@ static void init_storage(RxSlab *slabs, RxRingBuffer &free_q) {
 
 int main(int argc, char **argv) {
 
-    // QApplication app(argc, argv);
+    QApplication app(argc, argv);
 
-    // Preallocate storage
+    // Preallocate storage for Radio RX
     RxSlab slabs[SLAB_COUNT];
     RxRingBuffer free_q;
     RxRingBuffer filled_q;
+    init_storage(slabs, SLAB_COUNT, free_q);
 
-    init_storage(slabs, free_q);
+    // Preallocate storage for GUI
+    static const int GUI_SLAB_COUNT = 4;
+    RxSlab gui_slabs[GUI_SLAB_COUNT];
+    RxRingBuffer gui_free_q;
+    RxRingBuffer gui_filled_q;
+    init_storage(gui_slabs, GUI_SLAB_COUNT, gui_free_q);
 
     std::atomic<bool> running = true;
 
@@ -145,53 +139,22 @@ int main(int argc, char **argv) {
     std::thread t_rx(rx_thread_fn, &rx, std::ref(free_q), std::ref(filled_q),
                      std::ref(running));
     std::thread t_work(worker_thread_fn, &rx, std::ref(free_q),
-                       std::ref(filled_q), std::ref(running));
+                       std::ref(filled_q), std::ref(running),
+                       std::ref(gui_free_q), std::ref(gui_filled_q));
 
     // GUI
-    // MainWindow w(std::ref(i_queue), std::ref(q_queue));
-    // w.resize(1000, 600);
-    // w.show();
-    //
-    // int rc = app.exec();
+    MainWindow w(gui_free_q, gui_filled_q);
+    w.show();
 
-    while (running.load(std::memory_order_relaxed)) {
-        for (RxSlab slab : slabs) {
-            // After 1000 data packets have been handled, stop the program
-            if (slab.seq > 1000) {
-                running.store(false, std::memory_order_relaxed);
-            }
-        }
-    }
+    int rc = app.exec();
 
-    // while (true) {
-    //
-    //     if (i_queue.size() >= 3) {
-    //         break;
-    //     }
-    // }
-    //
-    // stop = true;
-    //
-    // std::cout << "Printing I and Q queues" << std::endl;
-    // for (int j = 0; j < 3; ++j) {
-    //     std::array<int16_t, RX_BUFFER_SIZE> i_front = i_queue.front();
-    //     std::array<int16_t, RX_BUFFER_SIZE> q_front = q_queue.front();
-    //
-    //     for (int k = 0; k < RX_BUFFER_SIZE; ++k) {
-    //         std::cout << i_front[k] << "  " << q_front[k] << " ";
-    //     }
-    //     std::cout << std::endl;
-    //
-    //     std::cout << i_queue.size() << std::endl;
-    //     i_queue.pop();
-    //     q_queue.pop();
-    // }
+    // Signal threads to stop when GUI is closed
+    running.store(false, std::memory_order_relaxed);
 
     t_rx.join();
     t_work.join();
 
     std::cout << "Main loop exited. Quitting" << std::endl;
 
-    // return rc;
-    return 0;
+    return rc;
 }

@@ -1,66 +1,93 @@
-
 #include "window.h"
 #include <cmath>
 #include <iostream>
 
-MainWindow::MainWindow(
-    std::queue<std::array<int16_t, I_Q_CHANNEL_BUFFER_SIZE>> &i_queue,
-    std::queue<std::array<int16_t, I_Q_CHANNEL_BUFFER_SIZE>> &q_queue)
-    : i_queue(i_queue), q_queue(q_queue) {
+MainWindow::MainWindow(RxRingBuffer &free_q, RxRingBuffer &filled_q)
+    : free_q_(free_q), filled_q_(filled_q) {
 
-    setWindowTitle("SDR Time plot (I/Q)");
+    setWindowTitle("SDR Real-time Plot");
+    setupUi();
 
-    auto *central = new QWidget(this);
-    auto *layout = new QVBoxLayout(central);
-
-    // Create plot
-    plot = new QCustomPlot(this);
-    layout->addWidget(plot);
-    setCentralWidget(central);
-
-    iGraph = plot->addGraph();
-    qGraph = plot->addGraph();
-    iGraph->setPen(QPen(Qt::blue));
-    qGraph->setPen(QPen(Qt::red));
-
-    plot->xAxis->setLabel("Sample");
-    plot->yAxis->setLabel("Amplitude");
-    plot->yAxis->setRange(-1000, 1000);
-
-    timer.setInterval(16);
+    timer.setInterval(33); // ~30 Hz
     connect(&timer, &QTimer::timeout, this, &MainWindow::onTick);
     timer.start();
 }
 
-void MainWindow::onTick() {
+void MainWindow::setupUi() {
+    auto *central = new QWidget(this);
+    auto *layout = new QVBoxLayout(central);
 
-    if (i_queue.empty() || q_queue.empty()) {
-        return;
-    }
+    // Time domain plot
+    timePlot = new QCustomPlot(this);
+    timePlot->addGraph(); // I
+    timePlot->graph(0)->setPen(QPen(Qt::blue));
+    timePlot->graph(0)->setName("I");
 
-    i_front = i_queue.front();
-    q_front = q_queue.front();
+    timePlot->addGraph(); // Q
+    timePlot->graph(1)->setPen(QPen(Qt::red));
+    timePlot->graph(1)->setName("Q");
 
-    // TODO: this should not happen here, but in next stage
-    i_queue.pop();
-    q_queue.pop();
+    timePlot->xAxis->setLabel("Sample Index");
+    timePlot->yAxis->setLabel("Amplitude");
+    timePlot->yAxis->setRange(-32768, 32767); // Full 16-bit range
+    layout->addWidget(timePlot);
 
-    updatePlot();
+    // Constellation plot
+    constellationPlot = new QCustomPlot(this);
+    constellationPlot->addGraph();
+    constellationPlot->graph(0)->setLineStyle(QCPGraph::lsNone);
+    constellationPlot->graph(0)->setScatterStyle(
+        QCPScatterStyle(QCPScatterStyle::ssDisc, 2));
+    constellationPlot->graph(0)->setPen(QPen(Qt::darkGreen));
+
+    constellationPlot->xAxis->setLabel("I");
+    constellationPlot->yAxis->setLabel("Q");
+    constellationPlot->xAxis->setRange(-32768, 32767);
+    constellationPlot->yAxis->setRange(-32768, 32767);
+    layout->addWidget(constellationPlot);
+
+    setCentralWidget(central);
+    resize(1000, 800);
 }
 
-void MainWindow::updatePlot() {
-    QVector<double> x(I_Q_CHANNEL_BUFFER_SIZE), i(I_Q_CHANNEL_BUFFER_SIZE),
-        q(I_Q_CHANNEL_BUFFER_SIZE);
+void MainWindow::onTick() {
+    RxSlab *slab = nullptr;
+    RxSlab *latest_slab = nullptr;
 
-    for (int n = 0; n < I_Q_CHANNEL_BUFFER_SIZE; ++n) {
-        x[n] = n;
-        i[n] = (double)i_front[n];
-        q[n] = (double)q_front[n];
-        std::cout << i[n] << q[n] << std::endl;
+    // Drain the queue to get the latest frame
+    while (fifo_pop(filled_q_, slab)) {
+        if (latest_slab) {
+            fifo_push(free_q_, latest_slab);
+        }
+        latest_slab = slab;
     }
 
-    iGraph->setData(x, i);
-    qGraph->setData(x, q);
-    plot->xAxis->setRange(0, (int)I_Q_CHANNEL_BUFFER_SIZE);
-    plot->replot();
+    if (latest_slab) {
+        updatePlots(latest_slab->data, latest_slab->len);
+        fifo_push(free_q_, latest_slab);
+    }
+}
+
+void MainWindow::updatePlots(const int16_t *data, size_t len) {
+    size_t n_samples = len / 2;
+    if (n_samples == 0)
+        return;
+
+    QVector<double> x(n_samples), i_vals(n_samples), q_vals(n_samples);
+
+    for (size_t idx = 0; idx < n_samples; ++idx) {
+        x[idx] = idx;
+        i_vals[idx] = static_cast<double>(data[idx * 2]);
+        q_vals[idx] = static_cast<double>(data[idx * 2 + 1]);
+    }
+
+    // Update Time Plot
+    timePlot->graph(0)->setData(x, i_vals);
+    timePlot->graph(1)->setData(x, q_vals);
+    timePlot->xAxis->setRange(0, n_samples);
+    timePlot->replot(QCustomPlot::rpQueued);
+
+    // Update Constellation Plot
+    constellationPlot->graph(0)->setData(i_vals, q_vals);
+    constellationPlot->replot(QCustomPlot::rpQueued);
 }
