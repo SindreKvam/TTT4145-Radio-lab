@@ -47,14 +47,14 @@ RootRaisedCosine::RootRaisedCosine(float beta, int span, int sps)
                      std::cos(M_PI * sps * time * (1 + beta))) /
                 (M_PI * time * sps * (1 - std::pow(4 * beta * time * sps, 2)));
         }
+    }
 
-        // Normalize the coefficients
-        // double sum_coeff =
-        //     std::accumulate(coefficients.begin(), coefficients.end(), 0.0);
-        //
-        // for (std::uint16_t i = 0; i < num_taps; ++i) {
-        //     coefficients[i] /= sum_coeff;
-        // }
+    // Normalize the coefficients
+    double sum_coeff =
+        std::accumulate(coefficients.begin(), coefficients.end(), 0.0);
+
+    for (std::uint16_t i = 0; i < num_taps; ++i) {
+        coefficients[i] /= sum_coeff;
     }
 }
 

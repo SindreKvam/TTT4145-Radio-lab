@@ -12,3 +12,10 @@
 #define RX_QUEUE_SIZE 3
 
 #define I_Q_CHANNEL_BUFFER_SIZE (RX_BUFFER_SIZE / 2)
+
+// Root raised cosine parameters
+#define RRC_BETA 0.5f
+#define RRC_SPAN 10
+#define RRC_SPS 4
+
+// Symbol rate (data rate * M (for M-QAM)) = SAMPLING_RATE / SPS
