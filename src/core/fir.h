@@ -16,6 +16,7 @@ class Fir {
   protected:
     std::vector<float> coefficients;
     std::uint16_t num_taps;
+    std::vector<float> delay_line;
 };
 
 #endif // FIR_H

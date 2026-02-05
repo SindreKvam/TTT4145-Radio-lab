@@ -39,6 +39,7 @@ target_link_libraries(radio_tx iio)
 add_executable(radio_rx
     src/main_rx.cpp
     src/core/fir.cpp
+    src/core/root_raised_cosine.cpp
     src/core/spsc_ring.cpp
     src/radio/pluto_sdr.cpp
     src/gui/window.cpp

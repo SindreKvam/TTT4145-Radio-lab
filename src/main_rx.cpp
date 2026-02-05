@@ -1,5 +1,6 @@
 
 #include "config.h"
+#include "core/root_raised_cosine.h"
 #include "core/spsc_ring.h"
 #include "gui/window.h"
 #include "radio/pluto_sdr.h"
@@ -10,10 +11,11 @@
 #include <iostream>
 #include <memory>
 #include <thread>
+#include <vector>
 
 static void process_block(const std::int16_t *data, std::size_t len,
                           std::uint64_t seq, RxRingBuffer &gui_free_q,
-                          RxRingBuffer &gui_filled_q);
+                          RxRingBuffer &gui_filled_q, Fir &fir_i, Fir &fir_q);
 
 static void rx_thread_fn(PlutoRx *rx, RxRingBuffer &free_q,
                          RxRingBuffer &filled_q, std::atomic<bool> &running) {
@@ -58,6 +60,9 @@ static void worker_thread_fn(PlutoRx *rx, RxRingBuffer &free_q,
                              RxRingBuffer &gui_free_q,
                              RxRingBuffer &gui_filled_q) {
 
+    RootRaisedCosine fir_i(RRC_BETA, RRC_SPAN, RRC_SPS);
+    RootRaisedCosine fir_q(RRC_BETA, RRC_SPAN, RRC_SPS);
+
     while (running.load(std::memory_order_relaxed)) {
         RxSlab *slab = nullptr;
 
@@ -68,7 +73,7 @@ static void worker_thread_fn(PlutoRx *rx, RxRingBuffer &free_q,
         }
 
         process_block(slab->data, slab->len, slab->seq, gui_free_q,
-                      gui_filled_q);
+                      gui_filled_q, fir_i, fir_q);
 
         slab->len = 0;
 
@@ -82,20 +87,35 @@ static void worker_thread_fn(PlutoRx *rx, RxRingBuffer &free_q,
 
 static void process_block(const std::int16_t *data, std::size_t len,
                           std::uint64_t seq, RxRingBuffer &gui_free_q,
-                          RxRingBuffer &gui_filled_q) {
+                          RxRingBuffer &gui_filled_q, Fir &fir_i, Fir &fir_q) {
 
-    // Pass the data to the GUI
+    size_t num_samples = len / 2;
+    if (num_samples == 0)
+        return;
+
+    // Data needs to be floating to perform FIR filtering
+    std::vector<float> i_in(num_samples), q_in(num_samples);
+    for (size_t i = 0; i < num_samples; ++i) {
+        i_in[i] = static_cast<float>(data[i * 2]);
+        q_in[i] = static_cast<float>(data[i * 2 + 1]);
+    }
+
+    // Apply Matched Filter
+    std::vector<float> i_out = fir_i.filter(i_in);
+    std::vector<float> q_out = fir_q.filter(q_in);
+
+    // Pass the filtered data to the GUI
     RxSlab *gui_slab = nullptr;
     if (fifo_pop(gui_free_q, gui_slab)) {
-        std::memcpy(gui_slab->data, data, len * sizeof(int16_t));
+
+        for (size_t i = 0; i < num_samples; ++i) {
+            gui_slab->data[i * 2] = static_cast<int16_t>(i_out[i]);
+            gui_slab->data[i * 2 + 1] = static_cast<int16_t>(q_out[i]);
+        }
         gui_slab->len = len;
         gui_slab->seq = seq;
         fifo_push(gui_filled_q, gui_slab);
     }
-
-    (void)data;
-    (void)len;
-    (void)seq;
 }
 
 static void init_storage(RxSlab *slabs, size_t count, RxRingBuffer &free_q) {
