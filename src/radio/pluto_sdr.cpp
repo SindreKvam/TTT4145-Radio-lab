@@ -50,6 +50,8 @@ void PlutoSdr::configure_rx(const StreamConfig &cfg) {
         cfg.fs_hz);
 }
 
+void PlutoSdr::configure_tx(const StreamConfig &cfg) {}
+
 /* ---------- Rx ---------- */
 PlutoRx::PlutoRx(std::shared_ptr<PlutoSdr> session, const StreamConfig &cfg)
     : session_(std::move(session)), cfg_(std::move(cfg)) {
@@ -116,7 +118,7 @@ size_t PlutoRx::receive(void *&p_dat, void *&p_end, ptrdiff_t &p_inc) {
 }
 
 /* ---------- Tx ---------- */
-PlutoTx::PlutoTx(std::shared_ptr<PlutoSdr> session, StreamConfig cfg)
+PlutoTx::PlutoTx(std::shared_ptr<PlutoSdr> session, const StreamConfig &cfg)
     : session_(std::move(session)), cfg_(std::move(cfg)) {
 
     if (!session_) {

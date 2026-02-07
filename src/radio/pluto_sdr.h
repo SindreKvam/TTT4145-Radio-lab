@@ -24,6 +24,12 @@ struct StreamConfig {
     }
 };
 
+/**
+ * @brief PlutoSdr is the base class for connecting to the Adalm Pluto.
+ *
+ * When a object of type PlutoSdr is constructed, a connection with an Adalm
+ * Pluto SDR will be attempted.
+ */
 class PlutoSdr {
   public:
     PlutoSdr();
@@ -38,7 +44,17 @@ class PlutoSdr {
     struct iio_device *phy;
 };
 
-/* ---------- Rx ---------- */
+/**
+ * @brief PlutoRx will configure Rx on an existing PlutoSdr session.
+ *
+ * This class requires there to already be an existing PlutoSdr session.
+ * When constructing this class, connections with the Rx streaming channels are
+ * made, and an Rx buffer is created
+ *
+ * @param session A shared pointer to an existing PlutoSdr session.
+ * @param cfg A StreamConfig struct containing information about how the Pluto
+ * Rx channel should be configured
+ */
 class PlutoRx {
   public:
     PlutoRx(std::shared_ptr<PlutoSdr> session, const StreamConfig &cfg);
@@ -64,10 +80,12 @@ class PlutoRx {
     struct iio_buffer *rxbuf;
 };
 
-/* ---------- Tx ---------- */
+/**
+ *
+ */
 class PlutoTx {
   public:
-    PlutoTx(std::shared_ptr<PlutoSdr> session, StreamConfig cfg);
+    PlutoTx(std::shared_ptr<PlutoSdr> session, const StreamConfig &cfg);
     ~PlutoTx();
 
     void transmit();
