@@ -31,15 +31,34 @@ PlutoSdr::~PlutoSdr() {
     if (ctx) {
         iio_context_destroy(ctx);
     }
+
+    std::cout << "\033[32mSuccessfully disconnected from the Adalm Pluto\033[0m"
+              << std::endl;
+}
+
+void PlutoSdr::configure_rx(const StreamConfig &cfg) {
+
+    // Set RX LO frequency
+    iio_channel_attr_write_longlong(
+        iio_device_find_channel(phy, "altvoltage0", true), "frequency",
+        cfg.lo_hz);
+
+    // Set RX baseband sample rate
+    iio_channel_attr_write_longlong(
+        iio_device_find_channel(phy, "voltage0", false), "sampling_frequency",
+        cfg.fs_hz);
 }
 
 /* ---------- Rx ---------- */
-PlutoRx::PlutoRx(std::shared_ptr<PlutoSdr> session, streamConfig cfg)
+PlutoRx::PlutoRx(std::shared_ptr<PlutoSdr> session, const StreamConfig &cfg)
     : session_(std::move(session)), cfg_(std::move(cfg)) {
 
     if (!session_) {
         throw std::runtime_error("No Pluto session");
     }
+
+    std::cout << "Configuring RX streaming channel: \n" << cfg << std::endl;
+    session_->configure_rx(cfg);
 
     std::cout << "Enabling streaming channels" << std::endl;
     rx_dev = iio_context_find_device(session_->ctx, "cf-ad9361-lpc");
@@ -93,7 +112,7 @@ size_t PlutoRx::receive(void *&p_dat, void *&p_end, ptrdiff_t &p_inc) {
 }
 
 /* ---------- Tx ---------- */
-PlutoTx::PlutoTx(std::shared_ptr<PlutoSdr> session, streamConfig cfg)
+PlutoTx::PlutoTx(std::shared_ptr<PlutoSdr> session, StreamConfig cfg)
     : session_(std::move(session)), cfg_(std::move(cfg)) {
 
     if (!session_) {

@@ -147,7 +147,8 @@ int main(int argc, char **argv) {
         std::shared_ptr<PlutoSdr>(new PlutoSdr());
 
     // Create rx session
-    PlutoRx rx = PlutoRx(session, {});
+    StreamConfig rx_cfg = StreamConfig();
+    PlutoRx rx = PlutoRx(session, rx_cfg);
 
     // Start threads
     std::thread t_rx(rx_thread_fn, &rx, std::ref(free_q), std::ref(filled_q),

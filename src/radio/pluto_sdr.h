@@ -10,10 +10,18 @@
 #include <queue>
 #include <stdexcept>
 
-struct streamConfig {
-    long long bw_hz; // Analog bandwidth
-    long long fs_hz; // Baseband sample rate
-    long long lo_hz; // LO frequency
+struct StreamConfig {
+    long long fs_hz = RX_SAMPLING_RATE_DEFAULT; // Baseband sample rate
+    long long lo_hz = RX_LO_FREQUENCY_DEFAULT;  // LO frequency
+
+    friend std::ostream &operator<<(std::ostream &os, const StreamConfig &cfg) {
+        os << "----- Stream Configuration -----\n";
+        os << "\033[35mBaseband sample rate: " << cfg.fs_hz / 1e6 << " MHz\n";
+        os << "LO frequency: " << cfg.lo_hz / 1e6 << " MHz\033[0m\n";
+        os << "--------------------------------";
+
+        return os;
+    }
 };
 
 class PlutoSdr {
@@ -23,8 +31,8 @@ class PlutoSdr {
 
     struct iio_context *ctx;
 
-    void configure_rx(const streamConfig &cfg);
-    void configure_tx(const streamConfig &cfg);
+    void configure_rx(const StreamConfig &cfg);
+    void configure_tx(const StreamConfig &cfg);
 
   private:
     struct iio_device *phy;
@@ -33,7 +41,7 @@ class PlutoSdr {
 /* ---------- Rx ---------- */
 class PlutoRx {
   public:
-    PlutoRx(std::shared_ptr<PlutoSdr> session, streamConfig cfg);
+    PlutoRx(std::shared_ptr<PlutoSdr> session, const StreamConfig &cfg);
     ~PlutoRx();
 
     /**
@@ -49,7 +57,7 @@ class PlutoRx {
 
   private:
     std::shared_ptr<PlutoSdr> session_;
-    streamConfig cfg_;
+    StreamConfig cfg_;
 
     struct iio_device *rx_dev;
     struct iio_channel *rx0_i, *rx0_q;
@@ -59,14 +67,14 @@ class PlutoRx {
 /* ---------- Tx ---------- */
 class PlutoTx {
   public:
-    PlutoTx(std::shared_ptr<PlutoSdr> session, streamConfig cfg);
+    PlutoTx(std::shared_ptr<PlutoSdr> session, StreamConfig cfg);
     ~PlutoTx();
 
     void transmit();
 
   private:
     std::shared_ptr<PlutoSdr> session_;
-    streamConfig cfg_;
+    StreamConfig cfg_;
 
     struct iio_device *tx_dev;
     struct iio_channel *tx0_i, *tx0_q;
