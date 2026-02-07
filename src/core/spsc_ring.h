@@ -33,6 +33,9 @@ struct RxSlab {
  */
 template <typename T, size_t Capacity> class SPSCRingBuffer {
   public:
+    // Add an extra capacity internally, so that when attempting to push a new
+    // item when full, the increment function will still increase to the same
+    // value as the head, instead of rotating back to index 0.
     static constexpr size_t RealCapacity = Capacity + 1;
 
     SPSCRingBuffer() : head_(0), tail_(0) {}
