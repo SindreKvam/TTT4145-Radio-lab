@@ -10,7 +10,7 @@
 PlutoSdr::PlutoSdr() {
 
     // Connecting to ADALM Pluto
-    std::cout << "Connecting to the ADALM PLUTO" << std::endl;
+    std::cout << "\033[34mConnecting to the ADALM PLUTO\033[0m" << std::endl;
     ctx = iio_create_context_from_uri("ip:192.168.2.1");
     if (!ctx) {
         perror("Could not connect to the ADALM PLUTO");
@@ -22,13 +22,14 @@ PlutoSdr::PlutoSdr() {
         perror("Could not find ad9361-phy");
     }
 
-    std::cout << "Connected to Adalm PLUTO" << std::endl;
+    std::cout << "\033[32mSuccessfully connected to the Adalm Pluto\033[0m"
+              << std::endl;
 };
 
 PlutoSdr::~PlutoSdr() {
 
-    std::cout << "Destroying context" << std::endl;
     if (ctx) {
+        std::cout << "Destroying context" << std::endl;
         iio_context_destroy(ctx);
     }
 
@@ -78,6 +79,9 @@ PlutoRx::PlutoRx(std::shared_ptr<PlutoSdr> session, const StreamConfig &cfg)
         perror("Could not create Rx buffer");
         throw std::runtime_error("Could not create Rx buffer");
     }
+
+    std::cout << "\033[32mSuccessfully configured Adalm Pluto in Rx mode\033[0m"
+              << std::endl;
 }
 
 PlutoRx::~PlutoRx() {

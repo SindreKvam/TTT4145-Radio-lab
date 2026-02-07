@@ -169,7 +169,7 @@ int main(int argc, char **argv) {
     t_rx.join();
     t_work.join();
 
-    std::cout << "Main loop exited. Quitting" << std::endl;
+    std::cout << "\033[34mMain loop exited. Quitting\033[0m" << std::endl;
 
     return rc;
 }

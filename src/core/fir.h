@@ -1,5 +1,4 @@
-#ifndef FIR_H
-#define FIR_H
+#pragma once
 
 #include <cstdint>
 #include <vector>
@@ -18,5 +17,3 @@ class Fir {
     std::uint16_t num_taps;
     std::vector<float> delay_line;
 };
-
-#endif // FIR_H
