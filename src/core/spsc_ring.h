@@ -38,7 +38,8 @@ template <typename T, size_t Capacity> class SPSCRingBuffer {
     SPSCRingBuffer() : head_(0), tail_(0) {}
 
     template <typename U, size_t N>
-    SPSCRingBuffer(U (&storage)[N]) : head_(0), tail_(0) {
+    SPSCRingBuffer(U (&storage)[N] /* Template array reference */)
+        : head_(0), tail_(0) {
         static_assert(N <= Capacity, "Storage array exceeds buffer capacity");
         for (size_t i = 0; i < N; ++i) {
             push(&storage[i]);
