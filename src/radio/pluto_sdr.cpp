@@ -1,6 +1,5 @@
 
 #include "pluto_sdr.h"
-#include "../core/spsc_ring.h"
 #include "config.h"
 #include <atomic>
 #include <cstddef>

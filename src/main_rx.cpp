@@ -13,12 +13,16 @@
 #include <thread>
 #include <vector>
 
-static void process_block(const std::int16_t *data, std::size_t len,
-                          std::uint64_t seq, RxRingBuffer &gui_free_q,
-                          RxRingBuffer &gui_filled_q, Fir &fir_i, Fir &fir_q);
+static void
+process_block(const std::int16_t *data, std::size_t len, std::uint64_t seq,
+              SPSCRingBuffer<RxSlab *, GUI_SLAB_COUNT> &gui_free_q,
+              SPSCRingBuffer<RxSlab *, GUI_SLAB_COUNT> &gui_filled_q,
+              Fir &fir_i, Fir &fir_q);
 
-static void rx_thread_fn(PlutoRx *rx, RxRingBuffer &free_q,
-                         RxRingBuffer &filled_q, std::atomic<bool> &running) {
+static void rx_thread_fn(PlutoRx *rx,
+                         SPSCRingBuffer<RxSlab *, SLAB_COUNT> &free_q,
+                         SPSCRingBuffer<RxSlab *, SLAB_COUNT> &filled_q,
+                         std::atomic<bool> &running) {
 
     void *p_dat, *p_end;
     ptrdiff_t p_inc;
@@ -28,7 +32,7 @@ static void rx_thread_fn(PlutoRx *rx, RxRingBuffer &free_q,
         RxSlab *slab = nullptr;
 
         // Get an empty slab
-        while (!fifo_pop(free_q, slab)) {
+        while (!free_q.pop(slab)) {
             if (!running.load(std::memory_order_relaxed)) {
                 return;
             }
@@ -47,7 +51,7 @@ static void rx_thread_fn(PlutoRx *rx, RxRingBuffer &free_q,
         slab->len = nbytes / 2; // Length in 16-bit chunks instead of bytes
         slab->seq = seq++;
 
-        while (!fifo_push(filled_q, slab)) {
+        while (!filled_q.push(slab)) {
             if (!running.load(std::memory_order_relaxed)) {
                 return;
             }
@@ -55,10 +59,12 @@ static void rx_thread_fn(PlutoRx *rx, RxRingBuffer &free_q,
     }
 }
 
-static void worker_thread_fn(PlutoRx *rx, RxRingBuffer &free_q,
-                             RxRingBuffer &filled_q, std::atomic<bool> &running,
-                             RxRingBuffer &gui_free_q,
-                             RxRingBuffer &gui_filled_q) {
+static void
+worker_thread_fn(PlutoRx *rx, SPSCRingBuffer<RxSlab *, SLAB_COUNT> &free_q,
+                 SPSCRingBuffer<RxSlab *, SLAB_COUNT> &filled_q,
+                 std::atomic<bool> &running,
+                 SPSCRingBuffer<RxSlab *, GUI_SLAB_COUNT> &gui_free_q,
+                 SPSCRingBuffer<RxSlab *, GUI_SLAB_COUNT> &gui_filled_q) {
 
     RootRaisedCosine fir_i(RRC_BETA, RRC_SPAN, RRC_SPS);
     RootRaisedCosine fir_q(RRC_BETA, RRC_SPAN, RRC_SPS);
@@ -66,7 +72,7 @@ static void worker_thread_fn(PlutoRx *rx, RxRingBuffer &free_q,
     while (running.load(std::memory_order_relaxed)) {
         RxSlab *slab = nullptr;
 
-        while (!fifo_pop(filled_q, slab)) {
+        while (!filled_q.pop(slab)) {
             if (!running.load(std::memory_order_relaxed)) {
                 return;
             }
@@ -77,7 +83,7 @@ static void worker_thread_fn(PlutoRx *rx, RxRingBuffer &free_q,
 
         slab->len = 0;
 
-        while (!fifo_push(free_q, slab)) {
+        while (!free_q.push(slab)) {
             if (!running.load(std::memory_order_relaxed)) {
                 return;
             }
@@ -85,9 +91,11 @@ static void worker_thread_fn(PlutoRx *rx, RxRingBuffer &free_q,
     }
 }
 
-static void process_block(const std::int16_t *data, std::size_t len,
-                          std::uint64_t seq, RxRingBuffer &gui_free_q,
-                          RxRingBuffer &gui_filled_q, Fir &fir_i, Fir &fir_q) {
+static void
+process_block(const std::int16_t *data, std::size_t len, std::uint64_t seq,
+              SPSCRingBuffer<RxSlab *, GUI_SLAB_COUNT> &gui_free_q,
+              SPSCRingBuffer<RxSlab *, GUI_SLAB_COUNT> &gui_filled_q,
+              Fir &fir_i, Fir &fir_q) {
 
     size_t num_samples = len / 2;
     if (num_samples == 0)
@@ -106,7 +114,7 @@ static void process_block(const std::int16_t *data, std::size_t len,
 
     // Pass the filtered data to the GUI
     RxSlab *gui_slab = nullptr;
-    if (fifo_pop(gui_free_q, gui_slab)) {
+    if (gui_free_q.pop(gui_slab)) {
 
         for (size_t i = 0; i < num_samples; ++i) {
             gui_slab->data[i * 2] = static_cast<int16_t>(i_out[i]);
@@ -114,18 +122,7 @@ static void process_block(const std::int16_t *data, std::size_t len,
         }
         gui_slab->len = len;
         gui_slab->seq = seq;
-        fifo_push(gui_filled_q, gui_slab);
-    }
-}
-
-static void init_storage(RxSlab *slabs, size_t count, RxRingBuffer &free_q) {
-    // Put all slabs into free queue
-    for (std::size_t i = 0; i < count; ++i) {
-        slabs[i].len = 0;
-        slabs[i].seq = 0;
-        // At startup it must succeed
-        while (!fifo_push(free_q, &slabs[i])) {
-        }
+        gui_filled_q.push(gui_slab);
     }
 }
 
@@ -135,16 +132,13 @@ int main(int argc, char **argv) {
 
     // Preallocate storage for Radio RX
     RxSlab slabs[SLAB_COUNT];
-    RxRingBuffer free_q;
-    RxRingBuffer filled_q;
-    init_storage(slabs, SLAB_COUNT, free_q);
+    SPSCRingBuffer<RxSlab *, SLAB_COUNT> free_q(slabs);
+    SPSCRingBuffer<RxSlab *, SLAB_COUNT> filled_q;
 
     // Preallocate storage for GUI
-    static const int GUI_SLAB_COUNT = 4;
     RxSlab gui_slabs[GUI_SLAB_COUNT];
-    RxRingBuffer gui_free_q;
-    RxRingBuffer gui_filled_q;
-    init_storage(gui_slabs, GUI_SLAB_COUNT, gui_free_q);
+    SPSCRingBuffer<RxSlab *, GUI_SLAB_COUNT> gui_free_q(gui_slabs);
+    SPSCRingBuffer<RxSlab *, GUI_SLAB_COUNT> gui_filled_q;
 
     std::atomic<bool> running = true;
 

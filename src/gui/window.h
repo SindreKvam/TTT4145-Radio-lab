@@ -14,7 +14,8 @@
 class MainWindow : public QMainWindow {
     Q_OBJECT
   public:
-    MainWindow(RxRingBuffer &free_q, RxRingBuffer &filled_q);
+    MainWindow(SPSCRingBuffer<RxSlab *, GUI_SLAB_COUNT> &free_q,
+               SPSCRingBuffer<RxSlab *, GUI_SLAB_COUNT> &filled_q);
 
   private slots:
     void onTick();
@@ -23,8 +24,8 @@ class MainWindow : public QMainWindow {
     void setupUi();
     void updatePlots(const int16_t *data, size_t len);
 
-    RxRingBuffer &free_q_;
-    RxRingBuffer &filled_q_;
+    SPSCRingBuffer<RxSlab *, GUI_SLAB_COUNT> &free_q_;
+    SPSCRingBuffer<RxSlab *, GUI_SLAB_COUNT> &filled_q_;
     QTimer timer;
 
     QCustomPlot *timePlot = nullptr;

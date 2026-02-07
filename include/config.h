@@ -16,6 +16,6 @@
 // Root raised cosine parameters
 #define RRC_BETA 0.5f
 #define RRC_SPAN 10
-#define RRC_SPS 4
+#define RRC_SPS 4 /** Sample per symbol */
 
 // Symbol rate (data rate * M (for M-QAM)) = SAMPLING_RATE / SPS

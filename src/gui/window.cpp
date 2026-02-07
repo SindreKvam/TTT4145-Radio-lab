@@ -2,7 +2,8 @@
 #include <cmath>
 #include <iostream>
 
-MainWindow::MainWindow(RxRingBuffer &free_q, RxRingBuffer &filled_q)
+MainWindow::MainWindow(SPSCRingBuffer<RxSlab *, GUI_SLAB_COUNT> &free_q,
+                       SPSCRingBuffer<RxSlab *, GUI_SLAB_COUNT> &filled_q)
     : free_q_(free_q), filled_q_(filled_q) {
 
     setWindowTitle("SDR Real-time Plot");
@@ -55,16 +56,16 @@ void MainWindow::onTick() {
     RxSlab *latest_slab = nullptr;
 
     // Drain the queue to get the latest frame
-    while (fifo_pop(filled_q_, slab)) {
+    while (filled_q_.pop(slab)) {
         if (latest_slab) {
-            fifo_push(free_q_, latest_slab);
+            free_q_.push(latest_slab);
         }
         latest_slab = slab;
     }
 
     if (latest_slab) {
         updatePlots(latest_slab->data, latest_slab->len);
-        fifo_push(free_q_, latest_slab);
+        free_q_.push(latest_slab);
     }
 }
 

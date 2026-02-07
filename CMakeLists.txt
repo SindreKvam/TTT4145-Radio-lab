@@ -40,7 +40,6 @@ add_executable(radio_rx
     src/main_rx.cpp
     src/core/fir.cpp
     src/core/root_raised_cosine.cpp
-    src/core/spsc_ring.cpp
     src/radio/pluto_sdr.cpp
     src/gui/window.cpp
     src/gui/qcustomplot.cpp
@@ -58,12 +57,14 @@ add_executable(
   # Test files
   tests/core_test.cpp
   tests/tx_tests.cpp
+  tests/spsc_test.cpp
   # Source files
   src/core/fir.cpp
   src/core/root_raised_cosine.cpp
   src/tx/fault_protection.cpp
   src/tx/modulators.cpp
 )
+target_include_directories(unittests PUBLIC include src)
 target_link_libraries(
   unittests
   GTest::gtest_main
