@@ -4,7 +4,6 @@
 #include "core/spsc_ring.h"
 #include "gui/window.h"
 #include "radio/pluto_sdr.h"
-#include "radio/radio_rx.h"
 #include <QApplication>
 #include <atomic>
 #include <cstring>
