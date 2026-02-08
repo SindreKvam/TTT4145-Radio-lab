@@ -6,11 +6,23 @@
 #include "radio/pluto_sdr.h"
 #include <QApplication>
 #include <atomic>
+#include <csignal>
 #include <cstring>
 #include <iostream>
 #include <memory>
 #include <thread>
 #include <vector>
+
+std::atomic<bool> running = true;
+
+static void handle_sigint(int sig) {
+    std::cout << "\033[1;33mGot CTRL+C, quitting program. Signal code: " << sig
+              << "\033[0m" << std::endl;
+    // Quit Qt application
+    QApplication::quit();
+    // Signal threads to stop
+    running.store(false, std::memory_order_relaxed);
+}
 
 static void
 process_block(const std::int16_t *data, std::size_t len, std::uint64_t seq,
@@ -20,8 +32,7 @@ process_block(const std::int16_t *data, std::size_t len, std::uint64_t seq,
 
 static void rx_thread_fn(PlutoRx *rx,
                          SPSCRingBuffer<RxSlab *, SLAB_COUNT> &free_q,
-                         SPSCRingBuffer<RxSlab *, SLAB_COUNT> &filled_q,
-                         std::atomic<bool> &running) {
+                         SPSCRingBuffer<RxSlab *, SLAB_COUNT> &filled_q) {
 
     void *p_dat, *p_end;
     ptrdiff_t p_inc;
@@ -61,7 +72,6 @@ static void rx_thread_fn(PlutoRx *rx,
 static void
 worker_thread_fn(PlutoRx *rx, SPSCRingBuffer<RxSlab *, SLAB_COUNT> &free_q,
                  SPSCRingBuffer<RxSlab *, SLAB_COUNT> &filled_q,
-                 std::atomic<bool> &running,
                  SPSCRingBuffer<RxSlab *, GUI_SLAB_COUNT> &gui_free_q,
                  SPSCRingBuffer<RxSlab *, GUI_SLAB_COUNT> &gui_filled_q) {
 
@@ -154,6 +164,9 @@ int main(int argc, char **argv) {
         return err;
     }
 
+    // Handle CTRL+C
+    std::signal(SIGINT, handle_sigint);
+
     QApplication app(argc, argv);
 
     // Preallocate storage for Radio RX
@@ -166,8 +179,6 @@ int main(int argc, char **argv) {
     SPSCRingBuffer<RxSlab *, GUI_SLAB_COUNT> gui_free_q(gui_slabs);
     SPSCRingBuffer<RxSlab *, GUI_SLAB_COUNT> gui_filled_q;
 
-    std::atomic<bool> running = true;
-
     // Create a session with Adalm Pluto
     std::shared_ptr<PlutoSdr> session =
         std::shared_ptr<PlutoSdr>(new PlutoSdr());
@@ -176,17 +187,15 @@ int main(int argc, char **argv) {
     StreamConfig rx_cfg = StreamConfig{.rfport = "A_BALANCED"};
     PlutoRx rx = PlutoRx(session, rx_cfg);
 
-    // StreamConfig tx_cfg = StreamConfig{.rfport = "A"};
-
     if (debug) {
         std::cout << *session << std::endl;
     }
+
     // Start threads
-    std::thread t_rx(rx_thread_fn, &rx, std::ref(free_q), std::ref(filled_q),
-                     std::ref(running));
+    std::thread t_rx(rx_thread_fn, &rx, std::ref(free_q), std::ref(filled_q));
     std::thread t_work(worker_thread_fn, &rx, std::ref(free_q),
-                       std::ref(filled_q), std::ref(running),
-                       std::ref(gui_free_q), std::ref(gui_filled_q));
+                       std::ref(filled_q), std::ref(gui_free_q),
+                       std::ref(gui_filled_q));
 
     // GUI
     MainWindow w(gui_free_q, gui_filled_q);
