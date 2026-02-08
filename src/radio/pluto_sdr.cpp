@@ -7,6 +7,16 @@
 #include <memory>
 #include <stdexcept>
 
+template <typename T>
+static int print_attr_cb(T, const char *attr, const char *value, size_t len,
+                         void *os_stream) {
+    if (os_stream) {
+        std::ostream &os = *static_cast<std::ostream *>(os_stream);
+        os << "Attribute: " << attr << " = " << value << "\n";
+    }
+    return 0;
+}
+
 PlutoSdr::PlutoSdr() {
 
     // Connecting to ADALM Pluto
@@ -51,6 +61,28 @@ void PlutoSdr::configure_rx(const StreamConfig &cfg) {
 }
 
 void PlutoSdr::configure_tx(const StreamConfig &cfg) {}
+
+std::ostream &operator<<(std::ostream &os, const PlutoSdr &sdr) {
+    // Phy attributes
+    if (sdr.phy) {
+        os << "\033[34mAttributes for " << iio_device_get_name(sdr.phy)
+           << ":\033[0m\n";
+        iio_device_attr_read_all(sdr.phy, print_attr_cb, &os);
+    }
+
+    // Channel attributes
+    unsigned int nb_channels = iio_device_get_channels_count(sdr.phy);
+    for (unsigned int i = 0; i < nb_channels; i++) {
+        struct iio_channel *chn = iio_device_get_channel(sdr.phy, i);
+        os << "\033[34m\n  [Channel: " << iio_channel_get_id(chn) << " ("
+           << (iio_channel_get_name(chn) ? iio_channel_get_name(chn)
+                                         : "no name")
+           << ")]\n\033[0m";
+        iio_channel_attr_read_all(chn, print_attr_cb, &os);
+    }
+
+    return os;
+}
 
 /* ---------- Rx ---------- */
 PlutoRx::PlutoRx(std::shared_ptr<PlutoSdr> session, const StreamConfig &cfg)

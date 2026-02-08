@@ -173,9 +173,14 @@ int main(int argc, char **argv) {
         std::shared_ptr<PlutoSdr>(new PlutoSdr());
 
     // Create rx session
-    StreamConfig rx_cfg = StreamConfig();
+    StreamConfig rx_cfg = StreamConfig{.rfport = "A_BALANCED"};
     PlutoRx rx = PlutoRx(session, rx_cfg);
 
+    // StreamConfig tx_cfg = StreamConfig{.rfport = "A"};
+
+    if (debug) {
+        std::cout << *session << std::endl;
+    }
     // Start threads
     std::thread t_rx(rx_thread_fn, &rx, std::ref(free_q), std::ref(filled_q),
                      std::ref(running));

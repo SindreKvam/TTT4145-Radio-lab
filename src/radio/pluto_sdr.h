@@ -13,12 +13,14 @@
 struct StreamConfig {
     long long fs_hz = RX_SAMPLING_RATE_DEFAULT; // Baseband sample rate
     long long lo_hz = RX_LO_FREQUENCY_DEFAULT;  // LO frequency
+    std::string rfport;                         // Port name
 
     friend std::ostream &operator<<(std::ostream &os, const StreamConfig &cfg) {
-        os << "----- Stream Configuration -----\n";
-        os << "\033[35mBaseband sample rate: " << cfg.fs_hz / 1e6 << " MHz\n";
-        os << "LO frequency: " << cfg.lo_hz / 1e6 << " MHz\033[0m\n";
-        os << "--------------------------------";
+        os << "\n----- Stream Configuration -----";
+        os << "\n\033[35mBaseband sample rate: " << cfg.fs_hz / 1e6 << " MHz";
+        os << "\nLO frequency: " << cfg.lo_hz / 1e6 << " MHz";
+        os << "\nRF port: " << cfg.rfport << "\033[0m";
+        os << "\n--------------------------------\n";
 
         return os;
     }
@@ -39,6 +41,7 @@ class PlutoSdr {
 
     void configure_rx(const StreamConfig &cfg);
     void configure_tx(const StreamConfig &cfg);
+    friend std::ostream &operator<<(std::ostream &os, const PlutoSdr &sdr);
 
   private:
     struct iio_device *phy;
