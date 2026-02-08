@@ -18,6 +18,4 @@ env
 .env
 
 # Doxygen output
-html
-latex
-
+docs
