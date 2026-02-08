@@ -125,7 +125,34 @@ process_block(const std::int16_t *data, std::size_t len, std::uint64_t seq,
     }
 }
 
+static int parse_arguments(int argc, char **argv, bool &debug) {
+    bool help_found = false;
+    for (int i = 0; i < argc; ++i) {
+
+        if (std::string(argv[i]) == "--help") {
+            help_found = true;
+            break;
+        }
+        if (std::string(argv[i]) == "--debug") {
+            debug = true;
+        }
+    }
+
+    if (help_found) {
+        std::cout << "Help menu:" << std::endl;
+        std::cout << "\t--debug : prints extra debug information." << std::endl;
+        return -1;
+    }
+    return 0;
+}
+
 int main(int argc, char **argv) {
+
+    bool debug = false;
+    int err = parse_arguments(argc, argv, debug);
+    if (err < 0) {
+        return err;
+    }
 
     QApplication app(argc, argv);
 
