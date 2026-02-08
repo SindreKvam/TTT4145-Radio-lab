@@ -3,6 +3,7 @@
 #include "config.h"
 #include <atomic>
 #include <cstddef>
+#include <cstring>
 #include <iio.h>
 #include <memory>
 #include <stdexcept>
@@ -12,9 +13,36 @@ static int print_attr_cb(T, const char *attr, const char *value, size_t len,
                          void *os_stream) {
     if (os_stream) {
         std::ostream &os = *static_cast<std::ostream *>(os_stream);
-        os << "Attribute: " << attr << " = " << value << "\n";
+        os << "\t\tAttribute: " << attr << " = " << value << "\n";
     }
     return 0;
+}
+
+std::string agc_string(AgcModes mode) {
+    switch (mode) {
+    case AgcModes::MANUAL:
+        return "manual";
+    case AgcModes::SLOW_ATTACK:
+        return "slow_attack";
+    case AgcModes::FAST_ATTACK:
+        return "fast_attack";
+    case AgcModes::HYBRID:
+        return "hybrid";
+    default:
+        return "slow_attack"; // The default on the pluto
+    }
+}
+
+std::ostream &operator<<(std::ostream &os, const StreamConfig &cfg) {
+    os << "\n----- Stream Configuration -----";
+    os << "\n\033[35mBaseband sample rate: " << cfg.fs_hz / 1e6 << " MHz";
+    os << "\nLO frequency: " << cfg.lo_hz / 1e6 << " MHz";
+    os << "\nRF bandwidth: " << cfg.rf_bw / 1e6 << " MHz";
+    os << "\nAGC mode: " << agc_string(cfg.agc_mode);
+    os << "\nRF port: " << cfg.rfport << "\033[0m";
+    os << "\n--------------------------------\n";
+
+    return os;
 }
 
 PlutoSdr::PlutoSdr() {
@@ -47,38 +75,73 @@ PlutoSdr::~PlutoSdr() {
               << std::endl;
 }
 
+static char *string_to_char_array(std::string str) {
+    // https://cplusplus.com/reference/string/string/c_str/
+    char *arr = new char[str.length() + 1];
+    std::strcpy(arr, str.c_str());
+    return arr;
+}
+
 void PlutoSdr::configure_rx(const StreamConfig &cfg) {
 
-    // Set RX LO frequency
+    iio_channel_attr_write(iio_device_find_channel(phy, "voltage0", false),
+                           "rf_port_select", string_to_char_array(cfg.rfport));
+
+    iio_channel_attr_write(iio_device_find_channel(phy, "voltage0", false),
+                           "gain_control_mode",
+                           string_to_char_array(agc_string(cfg.agc_mode)));
+
+    // Set Rx LO frequency
     iio_channel_attr_write_longlong(
         iio_device_find_channel(phy, "altvoltage0", true), "frequency",
         cfg.lo_hz);
 
-    // Set RX baseband sample rate
+    // Set Rx baseband sample rate
     iio_channel_attr_write_longlong(
         iio_device_find_channel(phy, "voltage0", false), "sampling_frequency",
         cfg.fs_hz);
+
+    // Set RF bandwidth
+    iio_channel_attr_write_longlong(
+        iio_device_find_channel(phy, "voltage0", false), "rf_bandwidth",
+        cfg.rf_bw);
 }
 
-void PlutoSdr::configure_tx(const StreamConfig &cfg) {}
+void PlutoSdr::configure_tx(const StreamConfig &cfg) {
+
+    // Set Tx LO frequency
+    iio_channel_attr_write_longlong(
+        iio_device_find_channel(phy, "altvoltage1", true), "frequency",
+        cfg.lo_hz);
+
+    // Set Tx baseband sample rate
+    iio_channel_attr_write_longlong(
+        iio_device_find_channel(phy, "voltage0", true), "sampling_frequency",
+        cfg.fs_hz);
+}
 
 std::ostream &operator<<(std::ostream &os, const PlutoSdr &sdr) {
-    // Phy attributes
     if (sdr.phy) {
+
+        // Phy attributes
         os << "\033[34mAttributes for " << iio_device_get_name(sdr.phy)
            << ":\033[0m\n";
         iio_device_attr_read_all(sdr.phy, print_attr_cb, &os);
-    }
 
-    // Channel attributes
-    unsigned int nb_channels = iio_device_get_channels_count(sdr.phy);
-    for (unsigned int i = 0; i < nb_channels; i++) {
-        struct iio_channel *chn = iio_device_get_channel(sdr.phy, i);
-        os << "\033[34m\n  [Channel: " << iio_channel_get_id(chn) << " ("
-           << (iio_channel_get_name(chn) ? iio_channel_get_name(chn)
-                                         : "no name")
-           << ")]\n\033[0m";
-        iio_channel_attr_read_all(chn, print_attr_cb, &os);
+        os << "\033[34mChannel attributes:\033[0m\n";
+        // Channel attributes
+        unsigned int nb_channels = iio_device_get_channels_count(sdr.phy);
+        for (unsigned int i = 0; i < nb_channels; i++) {
+            struct iio_channel *chn = iio_device_get_channel(sdr.phy, i);
+            const char *channel_name = iio_channel_get_name(chn);
+            const bool tx = iio_channel_is_output(chn);
+
+            os << "\033[34m\n\tChannel: " << iio_channel_get_id(chn) << " ("
+               << (channel_name ? channel_name : "no name") << ") ["
+               << (tx ? "Tx" : "Rx") << "]\n\033[0m";
+
+            iio_channel_attr_read_all(chn, print_attr_cb, &os);
+        }
     }
 
     return os;

@@ -10,20 +10,23 @@
 #include <queue>
 #include <stdexcept>
 
+enum class AgcModes {
+    MANUAL,
+    SLOW_ATTACK,
+    FAST_ATTACK,
+    HYBRID,
+};
+
+std::string agc_string(AgcModes mode);
+
 struct StreamConfig {
     long long fs_hz = RX_SAMPLING_RATE_DEFAULT; // Baseband sample rate
     long long lo_hz = RX_LO_FREQUENCY_DEFAULT;  // LO frequency
+    long long rf_bw = RX_RF_BANDWIDTH_DEFAULT;  // RF bandwidth
+    AgcModes agc_mode = AgcModes::MANUAL;       // AGC mode
     std::string rfport;                         // Port name
 
-    friend std::ostream &operator<<(std::ostream &os, const StreamConfig &cfg) {
-        os << "\n----- Stream Configuration -----";
-        os << "\n\033[35mBaseband sample rate: " << cfg.fs_hz / 1e6 << " MHz";
-        os << "\nLO frequency: " << cfg.lo_hz / 1e6 << " MHz";
-        os << "\nRF port: " << cfg.rfport << "\033[0m";
-        os << "\n--------------------------------\n";
-
-        return os;
-    }
+    friend std::ostream &operator<<(std::ostream &os, const StreamConfig &cfg);
 };
 
 /**

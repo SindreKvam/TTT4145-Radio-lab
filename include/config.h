@@ -4,6 +4,7 @@
 #define GHZ(x) ((long long)((x)*1000000000.0))
 
 #define RX_SAMPLING_RATE_DEFAULT MHZ(5.0)
+#define RX_RF_BANDWIDTH_DEFAULT MHZ(10)
 #define RX_LO_FREQUENCY_DEFAULT GHZ(2.4)
 
 #define RX_BUFFER_SIZE 1024
