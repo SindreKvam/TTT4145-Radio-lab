@@ -126,7 +126,7 @@ std::ostream &operator<<(std::ostream &os, const PlutoSdr &sdr) {
         // Phy attributes
         os << "\033[34mAttributes for " << iio_device_get_name(sdr.phy)
            << ":\033[0m\n";
-        iio_device_attr_read_all(sdr.phy, print_attr_cb, &os);
+        iio_device_attr_read_all(sdr.phy, print_attr_cb<iio_device *>, &os);
 
         os << "\033[34mChannel attributes:\033[0m\n";
         // Channel attributes
@@ -140,7 +140,7 @@ std::ostream &operator<<(std::ostream &os, const PlutoSdr &sdr) {
                << (channel_name ? channel_name : "no name") << ") ["
                << (tx ? "Tx" : "Rx") << "]\n\033[0m";
 
-            iio_channel_attr_read_all(chn, print_attr_cb, &os);
+            iio_channel_attr_read_all(chn, print_attr_cb<iio_channel *>, &os);
         }
     }
 
