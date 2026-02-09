@@ -63,6 +63,7 @@ add_executable(
   src/core/root_raised_cosine.cpp
   src/tx/fault_protection.cpp
   src/tx/modulators.cpp
+  src/core/modem.cpp
 )
 target_include_directories(unittests PUBLIC include src)
 target_link_libraries(

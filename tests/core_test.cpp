@@ -1,14 +1,20 @@
 
 #include "../include/config.h"
 #include "../src/core/fir.h"
+#include "../src/core/modem.h"
 #include "../src/core/root_raised_cosine.h"
 
 #include <matplot/matplot.h>
 
+#include <bitset>
 #include <cstdint>
 #include <gtest/gtest.h>
 #include <iostream>
+#include <string>
 #include <vector>
+
+#define MATPLOT_GENERAL_FONT_SIZE 16
+#define MATPLOT_LABEL_SIZE 18
 
 TEST(Core, FirFilter) {
 
@@ -70,5 +76,72 @@ TEST(Core, RootRaisedCosineNormalized) {
     matplot::hold("off");
     matplot::legend({"β = 1.0", "β = 0.5", "β = 0.75"});
     matplot::title("Root Raised Cosine impulse response");
+    auto ax = matplot::gca();
+    ax->font_size(MATPLOT_GENERAL_FONT_SIZE);
+    ax->title_font_size_multiplier(1.2);
+    ax->x_axis().label_font_size(MATPLOT_LABEL_SIZE);
+    ax->y_axis().label_font_size(MATPLOT_LABEL_SIZE);
+    ax->position({0.15, 0.15, 0.75, 0.70});
     matplot::save("test-artifacts/RRC_Coefficients.svg");
+}
+
+TEST(Core, MQamModulation) {
+
+    std::vector<std::complex<double>> symbols(16, 0.0 + 1j * 0.0);
+    std::vector<std::vector<double>> constellation(
+        2, std::vector<double>(16, 0.0));
+
+    Mqam mqam = Mqam(16);
+
+    for (uint16_t i = 0; i < 16; ++i) {
+        symbols[i] = mqam.modulate(i);
+
+        // Check that the lengths are normalized
+        EXPECT_LE(std::abs(symbols[i]), 1.0);
+
+        constellation[0][i] = symbols[i].real();
+        constellation[1][i] = symbols[i].imag();
+    }
+
+    auto fig = matplot::figure(true);
+    auto ax = matplot::gca();
+    ax->font_size(MATPLOT_GENERAL_FONT_SIZE);
+    ax->title_font_size_multiplier(1.2);
+    ax->x_axis().label_font_size(MATPLOT_LABEL_SIZE);
+    ax->y_axis().label_font_size(MATPLOT_LABEL_SIZE);
+    ax->position(
+        {0.15, 0.15, 0.75, 0.70}); // Title gets removed if we dont do this
+    matplot::hold("on");
+    matplot::scatter(constellation[0], constellation[1]);
+    for (int i = 0; i < 16; ++i) {
+        matplot::text(constellation[0][i] + 0.04, constellation[1][i] + 0.04,
+                      std::bitset<4>(i).to_string())
+            ->font_size(14)
+            .color("blue");
+    }
+    ax->title("16-QAM Constellation");
+    matplot::xlim({-1.0, 1.0});
+    matplot::ylim({-1.0, 1.0});
+    matplot::grid(true);
+    matplot::ylabel("Quadrature (Q)");
+    matplot::xlabel("In-phase (I)");
+    matplot::save("test-artifacts/16-QAM.svg");
+}
+
+TEST(Core, MQamDemodulation) {
+
+    Mqam mqam = Mqam(16);
+
+    std::complex<float> sample(1.0, 1.0);
+
+    EXPECT_EQ(mqam.demodulate(sample), 2);
+}
+
+TEST(Core, MQamModem) {
+
+    Mqam mqam = Mqam(16);
+
+    for (uint16_t i = 0; i < 16; ++i) {
+        EXPECT_EQ(mqam.demodulate(mqam.modulate(i)), i);
+    }
 }
