@@ -35,9 +35,9 @@ add_executable(radio_tx src/main_tx.cpp src/core/fir.cpp)
 target_include_directories(radio_tx PUBLIC include)
 target_link_libraries(radio_tx iio)
 
-# RX
-add_executable(radio_rx
-    src/main_rx.cpp
+# Rx and Tx
+add_executable(radio_rxtx
+    src/main_rxtx.cpp
     src/core/fir.cpp
     src/core/root_raised_cosine.cpp
     src/radio/pluto_sdr.cpp
@@ -45,9 +45,9 @@ add_executable(radio_rx
     src/gui/qcustomplot.cpp
 )
 # Automoc is required for Qt ¯\_(ツ)_/¯
-set_target_properties(radio_rx PROPERTIES AUTOMOC ON)
-target_include_directories(radio_rx PUBLIC include src)
-target_link_libraries(radio_rx iio matplot Qt5::Widgets Qt5::PrintSupport)
+set_target_properties(radio_rxtx PROPERTIES AUTOMOC ON)
+target_include_directories(radio_rxtx PUBLIC include src)
+target_link_libraries(radio_rxtx iio Qt5::Widgets Qt5::PrintSupport)
 
 # Testing
 enable_testing()
