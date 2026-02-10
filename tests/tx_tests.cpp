@@ -1,5 +1,6 @@
 
 #include "../src/tx/modulators.h"
+#include "tests.h"
 
 #include "gtest/gtest.h"
 #include <matplot/matplot.h>
@@ -8,9 +9,6 @@
 #include <gtest/gtest.h>
 #include <string>
 #include <vector>
-
-#define MATPLOT_GENERAL_FONT_SIZE 18
-#define MATPLOT_LABEL_SIZE 16
 
 // Allow parameterization of tests
 class MQamModulationTestFixture : public ::testing::TestWithParam<int> {
@@ -41,14 +39,7 @@ TEST_P(MQamModulationTestFixture, MQamModulation) {
     }
 
     // Create figure and configure font size etc
-    auto fig = matplot::figure(true);
-    auto ax = matplot::gca();
-    ax->font_size(MATPLOT_GENERAL_FONT_SIZE);
-    ax->title_font_size_multiplier(1.2);
-    ax->x_axis().label_font_size(MATPLOT_LABEL_SIZE);
-    ax->y_axis().label_font_size(MATPLOT_LABEL_SIZE);
-    ax->position(
-        {0.15, 0.15, 0.75, 0.70}); // Title gets removed if we dont do this
+    auto fig = generate_figure();
 
     // Add scatter points
     matplot::scatter(constellation[0], constellation[1]);
@@ -60,12 +51,12 @@ TEST_P(MQamModulationTestFixture, MQamModulation) {
     }
 
     // Add title, labels etc.
-    ax->title(std::to_string(mqam.num_of_symbols) + "-QAM Constellation");
+    matplot::title(std::to_string(mqam.num_of_symbols) + "-QAM Constellation");
     matplot::xlim({-1.5, 1.5});
     matplot::ylim({-1.5, 1.5});
-    matplot::grid(true);
     matplot::ylabel("Quadrature (Q)");
     matplot::xlabel("In-phase (I)");
+    matplot::grid(true);
     matplot::save("test-artifacts/" + std::to_string(mqam.num_of_symbols) +
                   "-QAM.svg");
 }
