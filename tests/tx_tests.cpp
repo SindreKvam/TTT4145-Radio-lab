@@ -1,28 +1,75 @@
 
 #include "../src/tx/modulators.h"
 
+#include "gtest/gtest.h"
 #include <matplot/matplot.h>
 
 #include <cstdint>
 #include <gtest/gtest.h>
+#include <string>
 #include <vector>
 
-TEST(TX, QPSK) {
+#define MATPLOT_GENERAL_FONT_SIZE 18
+#define MATPLOT_LABEL_SIZE 16
 
-    std::vector<double> polar(2, 0.0);
-    std::vector<std::vector<double>> constellation(2, std::vector<double>(8, 0.0));
+// Allow parameterization of tests
+class MQamModulationTestFixture : public ::testing::TestWithParam<int> {
+  protected:
+    QAM mqam;
+};
 
-    for (int i = 0; i < 8; ++i) {
-        polar = MPSK(i, 8);
+TEST_P(MQamModulationTestFixture, MQamModulation) {
 
-        constellation[0][i] = polar[0];
-        constellation[1][i] = polar[1];
+    const int M = GetParam();
+
+    std::vector<std::complex<float>> symbols(M, 0.0 + 1j * 0.0);
+    std::vector<std::vector<double>> constellation(2,
+                                                   std::vector<double>(M, 0.0));
+
+    QAM mqam(M);
+    const int bits_per_symbol = static_cast<int>(std::log2(M));
+
+    for (uint16_t i = 0; i < mqam.num_of_symbols; ++i) {
+        symbols[i] = mqam.modulate(i);
+
+        // Check that the lengths are normalized
+        EXPECT_LE(std::abs(symbols[i].real()), 1.0);
+        EXPECT_LE(std::abs(symbols[i].imag()), 1.0);
+
+        constellation[0][i] = symbols[i].real();
+        constellation[1][i] = symbols[i].imag();
     }
 
-    auto f = matplot::figure(true);
-    matplot::hold("on");
+    // Create figure and configure font size etc
+    auto fig = matplot::figure(true);
+    auto ax = matplot::gca();
+    ax->font_size(MATPLOT_GENERAL_FONT_SIZE);
+    ax->title_font_size_multiplier(1.2);
+    ax->x_axis().label_font_size(MATPLOT_LABEL_SIZE);
+    ax->y_axis().label_font_size(MATPLOT_LABEL_SIZE);
+    ax->position(
+        {0.15, 0.15, 0.75, 0.70}); // Title gets removed if we dont do this
+
+    // Add scatter points
     matplot::scatter(constellation[0], constellation[1]);
-    matplot::title("QPSK Constellation");
+    for (int i = 0; i < mqam.num_of_symbols; ++i) {
+        matplot::text(constellation[0][i] + 0.04, constellation[1][i] + 0.04,
+                      std::to_string(i))
+            ->font_size(14)
+            .color("blue");
+    }
+
+    // Add title, labels etc.
+    ax->title(std::to_string(mqam.num_of_symbols) + "-QAM Constellation");
+    matplot::xlim({-1.5, 1.5});
+    matplot::ylim({-1.5, 1.5});
     matplot::grid(true);
-    matplot::save("test-artifacts/MPSK.svg");
+    matplot::ylabel("Quadrature (Q)");
+    matplot::xlabel("In-phase (I)");
+    matplot::save("test-artifacts/" + std::to_string(mqam.num_of_symbols) +
+                  "-QAM.svg");
 }
+
+// Run testcase with multiple different parameter values
+INSTANTIATE_TEST_CASE_P(MQamModulationTests, MQamModulationTestFixture,
+                        ::testing::Values(4, 16, 64, 256, 1024));

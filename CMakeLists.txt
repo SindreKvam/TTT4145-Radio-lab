@@ -41,6 +41,7 @@ add_executable(radio_rxtx
     src/core/fir.cpp
     src/core/root_raised_cosine.cpp
     src/radio/pluto_sdr.cpp
+    src/tx/modulators.cpp
     src/gui/window.cpp
     src/gui/qcustomplot.cpp
 )
