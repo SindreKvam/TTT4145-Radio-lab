@@ -9,7 +9,7 @@
 
 
 /**
- * @brief does modulation
+ * @brief does modulation and demodulation initiate with children class
  * @param size is amount of different symbols allowed to to transmit
  * **/
 class Modulator{
@@ -21,12 +21,21 @@ class Modulator{
 
         //modulate a number based on the current modulation settings
         std::complex<float>modulate(uint16_t number_to_modulate);
+        
+        /**
+        * @brief does demodulation corresponding to the children class that instatiated the object
+        * @param number_to_demodulate is the the complex number received its then predicted as nerest neigbour
+        * **/
         std::uint16_t demodulate(std::complex<float> number_to_demodulate);
 
         //prints the current look up table in order for debugging
         void print_LUT();
 };
 
+/**
+ * @brief does MQAM and demodulation
+ * @param num_of_symbols is amount of different symbols allowed to to transmit
+ * **/
 class QAM : public Modulator{
     public:
         QAM(int num_of_symbols = 16);
