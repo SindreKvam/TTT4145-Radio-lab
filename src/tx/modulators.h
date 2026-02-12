@@ -7,6 +7,7 @@
 #include <algorithm>
 
 
+
 /**
  * @brief does modulation
  * @param size is amount of different symbols allowed to to transmit
@@ -20,6 +21,7 @@ class Modulator{
 
         //modulate a number based on the current modulation settings
         std::complex<float>modulate(uint16_t number_to_modulate);
+        std::uint16_t demodulate(std::complex<float> number_to_demodulate);
 
         //prints the current look up table in order for debugging
         void print_LUT();
@@ -36,5 +38,4 @@ class PSK:public Modulator{
     public:
         PSK(int num_of_symbols = 16);
         std::vector<std::complex<float>>generate_LUT(int num_of_symbols);//generates Look Up Table for M-PSK 
-
 };

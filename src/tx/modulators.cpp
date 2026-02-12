@@ -4,6 +4,10 @@
 #include <complex>
 #include <algorithm>
 
+//these are for testing
+#include <random>
+#include <ctime>
+
 #include "modulators.h"
 
 
@@ -86,6 +90,22 @@ std::complex<float> Modulator::modulate(uint16_t number_to_modulate){
     return LUT[number_to_modulate];
 }
 
+uint16_t Modulator::demodulate(std::complex<float> number_to_demodulate){
+    uint16_t closest_index;
+    float smallest_error = 2;
+    float new_error;
+
+    //cant ficure out a faster way unfortunatly
+    for (int i = 0; i < LUT.size(); i++){
+        new_error = std::abs(LUT[i] - number_to_demodulate); 
+        if (new_error < smallest_error){
+            smallest_error = new_error;
+            closest_index = i;
+        }
+    }
+    return closest_index;
+}
+
 //prints the current look up table in order for debugging
 void Modulator::print_LUT(){
     for (int i = 0; i < LUT.size(); i++){
@@ -95,14 +115,28 @@ void Modulator::print_LUT(){
 
 
 // int main(){
-//     QAM QAM_16(16);
-//     PSK PSK_16(4);
+//     int mod_size = 16;
+//     QAM QAM_16(mod_size);
+//     PSK PSK_16(mod_size);
 
-//     for (int i = 0; i < QAM_16.num_of_symbols; i++){
-//         std::cout<<i<<" gets modulated to "<<QAM_16.modulate(i)<<std::endl;
+//     //noise generation
+//     unsigned int random_number = static_cast<unsigned int>(time(NULL));
+//     float mean = 0;
+//     float st_dev = 1/(2*(std::sqrt(mod_size)-1));
+
+//     std::srand(time(0));
+//     std::mt19937 gen(random_number);
+//     std::normal_distribution<float> distribution(mean, st_dev);
+
+//     for(int i = 0; i < mod_size; i++){
+//         std::complex<float> modulation = QAM_16.modulate(i);
+//         std::complex<float> noisy_modulation = modulation;
+
+//         noisy_modulation.real(noisy_modulation.real() + distribution(gen));
+//         noisy_modulation.imag(noisy_modulation.imag() + distribution(gen));
+        
+//         uint16_t ret = QAM_16.demodulate(noisy_modulation);
+//         std::cout <<"given val = "<< i << " returned val = " << ret << "" << std::endl;
 //     }
-//     std::cout<<"PSK:\n\n";
-//     for (int i = 0; i < PSK_16.num_of_symbols; i++){
-//         std::cout<<i<<" gets modulated to "<<PSK_16.modulate(i)<<std::endl;
-//     }
+    
 // }
