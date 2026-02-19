@@ -8,7 +8,7 @@
 #include <random>
 #include <ctime>
 
-#include "modulators.h"
+#include "modem.h"
 
 
     
@@ -86,11 +86,11 @@ PSK::PSK(int num_of_symbols){
 }
 
 //modulate a number based on the current modulation settings
-std::complex<float> Modulator::modulate(uint16_t number_to_modulate){
+std::complex<float> Modem::modulate(uint16_t number_to_modulate){
     return LUT[number_to_modulate];
 }
 
-uint16_t Modulator::demodulate(std::complex<float> number_to_demodulate){
+uint16_t Modem::demodulate(std::complex<float> number_to_demodulate){
     uint16_t closest_index;
     float smallest_error = 2;
     float new_error;
@@ -107,12 +107,19 @@ uint16_t Modulator::demodulate(std::complex<float> number_to_demodulate){
 }
 
 //prints the current look up table in order for debugging
-void Modulator::print_LUT(){
+void Modem::print_LUT(){
     for (int i = 0; i < LUT.size(); i++){
         std::cout<<"index "<<i<<" in LUT is "<<LUT[i]<<std::endl;
     }
 }
 
+std::ostream &operator<<(std::ostream &os, Modem &modem) {
+    for (int i = 0; i < modem.LUT.size(); i++) {
+        std::cout << "index " << i << " in LUT is " << modem.LUT[i]
+                  << std::endl;
+    }
+    return os;
+}
 
 // int main(){
 //     int mod_size = 16;

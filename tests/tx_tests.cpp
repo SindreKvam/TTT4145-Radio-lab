@@ -1,5 +1,5 @@
 
-#include "../src/tx/modulators.h"
+#include "../src/modem/modem.h"
 #include "tests.h"
 
 #include "gtest/gtest.h"

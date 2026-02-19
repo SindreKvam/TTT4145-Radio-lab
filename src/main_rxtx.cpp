@@ -3,6 +3,7 @@
 #include "core/root_raised_cosine.h"
 #include "core/spsc_ring.h"
 #include "gui/window.h"
+#include "modem/modem.h"
 #include "radio/pluto_sdr.h"
 #include <QApplication>
 #include <atomic>

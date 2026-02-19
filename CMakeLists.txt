@@ -41,7 +41,7 @@ add_executable(radio_rxtx
     src/core/fir.cpp
     src/core/root_raised_cosine.cpp
     src/radio/pluto_sdr.cpp
-    src/tx/modulators.cpp
+    src/modem/modem.cpp
     src/gui/window.cpp
     src/gui/qcustomplot.cpp
 )
@@ -62,8 +62,7 @@ add_executable(
   # Source files
   src/core/fir.cpp
   src/core/root_raised_cosine.cpp
-  src/tx/fault_protection.cpp
-  src/tx/modulators.cpp
+  src/modem/modem.cpp
 )
 target_include_directories(unittests PUBLIC include src)
 target_link_libraries(
