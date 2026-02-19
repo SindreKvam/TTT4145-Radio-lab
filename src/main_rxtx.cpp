@@ -101,6 +101,40 @@ worker_thread_fn(PlutoRx *rx, SPSCRingBuffer<RxSlab *, SLAB_COUNT> &free_q,
     }
 }
 
+static void tx_thread_fn(PlutoTx *tx) {
+    QAM modem(16);
+    RootRaisedCosine rrc_i(RRC_BETA, RRC_SPAN, RRC_SPS);
+    RootRaisedCosine rrc_q(RRC_BETA, RRC_SPAN, RRC_SPS);
+
+    const size_t num_symbols = RX_BUFFER_SIZE / RRC_SPS;
+    std::vector<std::complex<float>> samples(RX_BUFFER_SIZE);
+    std::vector<float> upsampled_i(RX_BUFFER_SIZE, 0.0f);
+    std::vector<float> upsampled_q(RX_BUFFER_SIZE, 0.0f);
+
+    while (running.load(std::memory_order_relaxed)) {
+        for (size_t i = 0; i < num_symbols; ++i) {
+            std::complex<float> symbol = modem.modulate((uint16_t)i % 16);
+            upsampled_i[i * RRC_SPS] = symbol.real();
+            upsampled_q[i * RRC_SPS] = symbol.imag();
+
+            for (int j = 1; j < RRC_SPS; ++j) {
+                upsampled_i[i * RRC_SPS + j] = 0.0f;
+                upsampled_q[i * RRC_SPS + j] = 0.0f;
+            }
+        }
+
+        std::vector<float> filtered_i = rrc_i.filter(upsampled_i);
+        std::vector<float> filtered_q = rrc_q.filter(upsampled_q);
+
+        for (size_t i = 0; i < RX_BUFFER_SIZE; ++i) {
+            samples[i].real(filtered_i[i]);
+            samples[i].imag(filtered_q[i]);
+        }
+
+        tx->transmit(samples);
+    }
+}
+
 static void
 process_block(const std::int16_t *data, std::size_t len, std::uint64_t seq,
               SPSCRingBuffer<RxSlab *, GUI_SLAB_COUNT> &gui_free_q,
@@ -188,14 +222,17 @@ int main(int argc, char **argv) {
     StreamConfig rx_cfg = StreamConfig{.fs_hz = RX_SAMPLING_RATE_DEFAULT,
                                        .lo_hz = RX_LO_FREQUENCY_DEFAULT,
                                        .rf_bw = RX_RF_BANDWIDTH_DEFAULT,
-                                       .rfport = "A_BALANCED"};
+                                       .rx_gain = RX_HARDWARE_GAIN,
+                                       .rx_agc_mode = AgcModes::MANUAL,
+                                       .rx_rfport = "A_BALANCED"};
     PlutoRx rx = PlutoRx(session, rx_cfg);
 
     // Create tx session
     StreamConfig tx_cfg = StreamConfig{.fs_hz = TX_SYMBOL_RATE_DEFAULT,
                                        .lo_hz = TX_LO_FREQUENCY_DEFAULT,
                                        .rf_bw = TX_RF_BANDWIDTH_DEFAULT,
-                                       .rfport = "A"};
+                                       .tx_gain = TX_HARDWARE_GAIN,
+                                       .tx_rfport = "A"};
     PlutoTx tx = PlutoTx(session, tx_cfg);
 
     if (debug) {
@@ -207,6 +244,7 @@ int main(int argc, char **argv) {
     std::thread t_work(worker_thread_fn, &rx, std::ref(free_q),
                        std::ref(filled_q), std::ref(gui_free_q),
                        std::ref(gui_filled_q));
+    std::thread t_tx(tx_thread_fn, &tx);
 
     // GUI
     MainWindow w(gui_free_q, gui_filled_q);
@@ -219,6 +257,7 @@ int main(int argc, char **argv) {
 
     t_rx.join();
     t_work.join();
+    t_tx.join();
 
     std::cout << "\033[34mMain loop exited. Quitting\033[0m" << std::endl;
 

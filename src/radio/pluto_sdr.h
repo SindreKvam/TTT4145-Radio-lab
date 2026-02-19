@@ -3,6 +3,7 @@
 #include "config.h"
 #include <array>
 #include <atomic>
+#include <complex>
 #include <cstdio>
 #include <iio.h>
 #include <iostream>
@@ -19,12 +20,21 @@ enum class AgcModes {
 
 std::string agc_string(AgcModes mode);
 
+/**
+ * @brief Configurations for Rx and Tx streaming
+ *
+ * Default values are set based on the values read from an unconfigured Adalm
+ * Pluto.
+ */
 struct StreamConfig {
-    long long fs_hz = RX_SAMPLING_RATE_DEFAULT; // Baseband sample rate
-    long long lo_hz = RX_LO_FREQUENCY_DEFAULT;  // LO frequency
-    long long rf_bw = RX_RF_BANDWIDTH_DEFAULT;  // RF bandwidth
-    AgcModes agc_mode = AgcModes::MANUAL;       // AGC mode
-    std::string rfport;                         // Port name
+    long long fs_hz = 30720000;   // Baseband sample rate
+    long long lo_hz = 2450000000; // LO frequency
+    long long rf_bw = 18000000;   // RF bandwidth
+    long long rx_gain = 71;       // dB gain; [-3 1 71]
+    long long tx_gain = -10;      // dB gain; [-89.750000 0.250000 0.000000]
+    AgcModes rx_agc_mode = AgcModes::SLOW_ATTACK; // AGC mode
+    std::string rx_rfport = "A_BALANCED";         // Port name
+    std::string tx_rfport = "A";                  // Port name
 
     friend std::ostream &operator<<(std::ostream &os, const StreamConfig &cfg);
 };
@@ -94,7 +104,7 @@ class PlutoTx {
     PlutoTx(std::shared_ptr<PlutoSdr> session, const StreamConfig &cfg);
     ~PlutoTx();
 
-    void transmit();
+    size_t transmit(const std::vector<std::complex<float>> &samples);
 
   private:
     std::shared_ptr<PlutoSdr> session_;

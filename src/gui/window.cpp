@@ -30,7 +30,7 @@ void MainWindow::setupUi() {
 
     timePlot->xAxis->setLabel("Sample Index");
     timePlot->yAxis->setLabel("Amplitude");
-    timePlot->yAxis->setRange(-32768, 32767); // Full 16-bit range
+    timePlot->yAxis->setRange(-2048, 2047); // Full 12-bit range
     layout->addWidget(timePlot);
 
     // Constellation plot
@@ -43,8 +43,8 @@ void MainWindow::setupUi() {
 
     constellationPlot->xAxis->setLabel("I");
     constellationPlot->yAxis->setLabel("Q");
-    constellationPlot->xAxis->setRange(-32768, 32767);
-    constellationPlot->yAxis->setRange(-32768, 32767);
+    constellationPlot->xAxis->setRange(-4096, 4095);
+    constellationPlot->yAxis->setRange(-4096, 4095);
     layout->addWidget(constellationPlot);
 
     setCentralWidget(central);

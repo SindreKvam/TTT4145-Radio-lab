@@ -1,12 +1,8 @@
 
 #include "pluto_sdr.h"
 #include "config.h"
-#include <atomic>
 #include <cstddef>
 #include <cstring>
-#include <iio.h>
-#include <memory>
-#include <stdexcept>
 
 template <typename T>
 static int print_attr_cb(T, const char *attr, const char *value, size_t len,
@@ -35,11 +31,16 @@ std::string agc_string(AgcModes mode) {
 
 std::ostream &operator<<(std::ostream &os, const StreamConfig &cfg) {
     os << "\n----- Stream Configuration -----";
-    os << "\n\033[35mBaseband sample rate: " << cfg.fs_hz / 1e6 << " MHz";
+    os << "\033[35m";
+    os << "\nBaseband sample rate: " << cfg.fs_hz / 1e6 << " MHz";
     os << "\nLO frequency: " << cfg.lo_hz / 1e6 << " MHz";
     os << "\nRF bandwidth: " << cfg.rf_bw / 1e6 << " MHz";
-    os << "\nAGC mode: " << agc_string(cfg.agc_mode);
-    os << "\nRF port: " << cfg.rfport << "\033[0m";
+    os << "\nRX AGC mode: " << agc_string(cfg.rx_agc_mode);
+    os << "\nRX RF port: " << cfg.rx_rfport;
+    os << "\nTX RF port: " << cfg.tx_rfport;
+    os << "\nRX Gain: " << cfg.rx_gain;
+    os << "\nTX Gain: " << cfg.tx_gain;
+    os << "\033[0m";
     os << "\n--------------------------------\n";
 
     return os;
@@ -75,21 +76,14 @@ PlutoSdr::~PlutoSdr() {
               << std::endl;
 }
 
-static char *string_to_char_array(std::string str) {
-    // https://cplusplus.com/reference/string/string/c_str/
-    char *arr = new char[str.length() + 1];
-    std::strcpy(arr, str.c_str());
-    return arr;
-}
-
 void PlutoSdr::configure_rx(const StreamConfig &cfg) {
 
     iio_channel_attr_write(iio_device_find_channel(phy, "voltage0", false),
-                           "rf_port_select", string_to_char_array(cfg.rfport));
+                           "rf_port_select", cfg.rx_rfport.c_str());
 
     iio_channel_attr_write(iio_device_find_channel(phy, "voltage0", false),
                            "gain_control_mode",
-                           string_to_char_array(agc_string(cfg.agc_mode)));
+                           agc_string(cfg.rx_agc_mode).c_str());
 
     // Set Rx LO frequency
     iio_channel_attr_write_longlong(
@@ -105,9 +99,21 @@ void PlutoSdr::configure_rx(const StreamConfig &cfg) {
     iio_channel_attr_write_longlong(
         iio_device_find_channel(phy, "voltage0", false), "rf_bandwidth",
         cfg.rf_bw);
+
+    // Set Rx Gain
+    iio_channel_attr_write_longlong(
+        iio_device_find_channel(phy, "voltage0", false), "hardwaregain",
+        cfg.rx_gain);
+
+    // Set quadrature tracking
+    iio_channel_attr_write_bool(iio_device_find_channel(phy, "voltage0", false),
+                                "quadrature_tracking_en", true);
 }
 
 void PlutoSdr::configure_tx(const StreamConfig &cfg) {
+
+    iio_channel_attr_write(iio_device_find_channel(phy, "voltage0", true),
+                           "rf_port_select", cfg.tx_rfport.c_str());
 
     // Set Tx LO frequency
     iio_channel_attr_write_longlong(
@@ -118,6 +124,16 @@ void PlutoSdr::configure_tx(const StreamConfig &cfg) {
     iio_channel_attr_write_longlong(
         iio_device_find_channel(phy, "voltage0", true), "sampling_frequency",
         cfg.fs_hz);
+
+    // Set RF bandwidth
+    iio_channel_attr_write_longlong(
+        iio_device_find_channel(phy, "voltage0", true), "rf_bandwidth",
+        cfg.rf_bw);
+
+    // Set Tx Hardware gain
+    iio_channel_attr_write_longlong(
+        iio_device_find_channel(phy, "voltage0", true), "hardwaregain",
+        cfg.tx_gain);
 }
 
 std::ostream &operator<<(std::ostream &os, const PlutoSdr &sdr) {
@@ -155,8 +171,8 @@ PlutoRx::PlutoRx(std::shared_ptr<PlutoSdr> session, const StreamConfig &cfg)
         throw std::runtime_error("No Pluto session");
     }
 
-    std::cout << "Configuring RX streaming channel: \n" << cfg << std::endl;
-    session_->configure_rx(cfg);
+    std::cout << "Configuring RX streaming channel: \n" << cfg_ << std::endl;
+    session_->configure_rx(cfg_);
 
     std::cout << "Enabling streaming channels" << std::endl;
     rx_dev = iio_context_find_device(session_->ctx, "cf-ad9361-lpc");
@@ -220,6 +236,9 @@ PlutoTx::PlutoTx(std::shared_ptr<PlutoSdr> session, const StreamConfig &cfg)
         throw std::runtime_error("No Pluto session");
     }
 
+    std::cout << "Configuring TX streaming channel: \n" << cfg_ << std::endl;
+    session_->configure_tx(cfg_);
+
     tx_dev = iio_context_find_device(session_->ctx, "cf-ad9361-dds-core-lpc");
     if (!tx_dev) {
         perror("Could not find TX device");
@@ -252,4 +271,29 @@ PlutoTx::~PlutoTx() {
     if (tx0_q) {
         iio_channel_disable(tx0_q);
     }
+}
+
+size_t PlutoTx::transmit(const std::vector<std::complex<float>> &samples) {
+
+    // Get pointers
+    char *p_dat = (char *)iio_buffer_first(txbuf, tx0_i);
+    char *p_end = (char *)iio_buffer_end(txbuf);
+    ptrdiff_t p_inc = iio_buffer_step(txbuf);
+
+    int i = 0;
+    for (p_dat = (char *)iio_buffer_first(txbuf, tx0_i); p_dat < p_end;
+         p_dat += p_inc) {
+        // Scale (-1, 1) range values to full 12-bit range
+        // 12-bit sample needs to be MSB aligned; bitshift by 4
+        ((int16_t *)p_dat)[0] = (int16_t)(samples[i].real() * 2047.0f) << 4;
+        ((int16_t *)p_dat)[1] = (int16_t)(samples[i].imag() * 2047.0f) << 4;
+        ++i;
+    }
+
+    size_t nbytes = iio_buffer_push(txbuf);
+    if (nbytes < 0) {
+        throw std::runtime_error("Unable to fill Tx buffer");
+    }
+
+    return nbytes;
 }
