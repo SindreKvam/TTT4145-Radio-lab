@@ -8,7 +8,7 @@
 #include <algorithm>
 
 class Hamming{
-    private:
+    protected:
         int window_size; //will use log2(windowsize)+1 for fault detection
         std::vector<uint16_t> tx_buffer;//contains 16 window of bits including error correction
         std::vector<uint16_t> index_of_parity_bits;
@@ -19,6 +19,7 @@ class Hamming{
         void encode();
         void decode();
 
+        
 
     public:
         bool ready_to_send_buffer = false;
@@ -28,5 +29,9 @@ class Hamming{
 
         void force_encode();
         void force_decode();
+
+        void test_encoding();
+
+        friend std::ostream& operator<< (std::ostream& os, Hamming &hamming);
 };
 
