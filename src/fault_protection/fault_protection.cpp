@@ -6,6 +6,10 @@
 #include <algorithm>
 #include <iomanip>
 
+//for testing
+#include <random>
+#include <ctime>
+
 #include "fault_protection.h"
 
 void Hamming::test_encoding(){
@@ -42,6 +46,16 @@ void Hamming::test_encoding(){
             std::cout<<"---failed parity index---"<<parity_index<<std::endl;
         }
     }
+    std::cout<<std::endl;
+}
+
+void print_binary(uint16_t num){
+    uint16_t bitmask = 1<<15;
+        while(bitmask){
+            if (bitmask & num){std::cout<<1;}
+            else{std::cout<<0;}
+            bitmask >>= 1;
+        }
 }
 
 //prints vectors
@@ -58,18 +72,14 @@ std::ostream &operator<<(std::ostream &os, std::vector<T> &vec){
 //Prints hamming window
 std::ostream &operator<<(std::ostream &os, Hamming &hamming){
     //printing the buffer
-    int index = 0;
-    std::cout<<"buffer = "<<std::endl;
-    for (auto i : hamming.tx_buffer){
-        uint16_t bitmask = 1<<15;
-        while(bitmask){
-            if (bitmask & i){std::cout<<1;}
-            else{std::cout<<0;}
-            bitmask >>= 1;
-        }
-        std::cout << " = " << std::hex << std::setw(4) << std::setfill('0') << i << "   index = " << index;
+    std::cout<<"tx_buffer =                     rx_buffer"<<std::endl;
+    for (int i = 0; i < hamming.window_size; i++){
+        print_binary(hamming.tx_buffer[i]);
+        std::cout << " = " << std::hex << std::setw(4) << std::setfill('0') << hamming.tx_buffer[i] <<"     ";
+        print_binary(hamming.rx_buffer[i]);
+        std::cout << " = " << std::hex << std::setw(4) << std::setfill('0') << hamming.rx_buffer[i] << "   index = " << i;
         std::cout<<std::endl;
-        index++;
+
     }
     std::cout<<std::endl;
 
@@ -82,34 +92,10 @@ std::ostream &operator<<(std::ostream &os, Hamming &hamming){
     return os;
 }
 
-void Hamming::print_internals(){
-    //printing the buffer
-    int index = 0;
-    std::cout<<"buffer = "<<std::endl;
-    for (auto i : this->tx_buffer){
-        uint16_t bitmask = 1<<15;
-        while(bitmask){
-            if (bitmask & i){std::cout<<1;}
-            else{std::cout<<0;}
-            bitmask >>= 1;
-        }
-        std::cout << " = " << i << " index = " << index;
-        std::cout<<std::endl;
-        index++;
-    }
-    std::cout<<std::endl;
-
-    //printing the parity bit index
-    std::cout<<"parity bit indexes = ";
-    for (auto i : index_of_parity_bits){
-        std::cout<<i<<" ";
-    }
-    std::cout<<std::endl;
-}
-
 Hamming::Hamming(int window_size){
     int parity_bits_amount = int(std::log2(window_size))+1;
     tx_buffer.resize(window_size,0);// makes the vector fill with zeros to the correct size
+    rx_buffer.resize(window_size,0);
 
     this->index_of_parity_bits.reserve(parity_bits_amount);
     this->window_size = window_size;
@@ -178,12 +164,78 @@ void Hamming::encode(){
 
 }
 
+void Hamming::decode(){
+    uint16_t bitmask = 1 << 15;
+    std::vector<uint16_t> flipper(window_size, 0); // will be used to figure what bits to flip
+    int h_index = 0; //horizontal index
+
+    uint16_t resend_v_line = 0;//i message is 
+
+    //find out what bit to flip 
+    while (bitmask){
+        for (int v_index = 0; v_index < window_size; v_index++){
+            if (bitmask & rx_buffer[v_index]){
+                flipper[h_index] ^= v_index;    
+            }
+        }
+        bitmask>>=1;
+        h_index++;
+    }
+
+    std::cout<<"flipper = "<<flipper<<std::endl;
+
+
+    //flips the correct bits
+    bitmask = 1<<15;
+    for (uint16_t flip_index:flipper){
+        rx_buffer[flip_index] ^= (rx_buffer[flip_index] & bitmask);
+        bitmask >>= 1;
+    }
+
+    //checks total parity
+    uint16_t total_parity = 0;//one means that there is parity as the flipping flips do magic
+    for (uint16_t message: rx_buffer){
+        total_parity ^= message;
+    }
+
+    print_binary(total_parity);
+    std::cout<<std::endl<<"= total parity";
+
+    bitmask = 1 << 15;
+    while (bitmask)
+    {
+        if(total_parity & bitmask){
+            resend_v_line |= bitmask;
+        }
+        bitmask >>= 1;
+    }
+
+}
+
 void Hamming::force_encode(){
     encode();
 }
 
-void Hamming::decode(){
+void Hamming::force_decode(){
+    decode();
+}
 
+void Hamming::scramble_message(){
+    std::srand(std::time(0));
+    std::vector<uint16_t> error_index(16, 0);
+
+    uint16_t bitmask = 1 << 15;
+    uint16_t h_index = 0;
+    while (bitmask){
+        int random_indx = std::rand()%window_size;
+        rx_buffer[random_indx]^=bitmask;
+        bitmask >>= 1;
+    }
+    
+}
+
+void Hamming::internal_transfer(){
+    rx_buffer = tx_buffer;
 }
 
 // int main(){
@@ -207,8 +259,17 @@ void Hamming::decode(){
 //     ham.put_into_buffer(0xAF04);
 
 //     ham.force_encode();
-    
 //     std::cout<<ham<<std::endl;
 //     ham.test_encoding();
+    
+//     //test scrambler
+//     ham.internal_transfer();
+//     ham.scramble_message();
+//     std::cout<<ham<<std::endl;    
+
+//     ham.force_decode();
+//     std::cout<<ham<<std::endl;
+
+    
 //     //ham.print_internals();
 // }
