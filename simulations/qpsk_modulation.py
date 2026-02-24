@@ -12,6 +12,12 @@ def QPSK(data: np.ndarray):
     return x_symbols
 
 
+def QPSK_demod(symbol: complex):
+    x = np.array([0, 1, 2, 3])
+    mod = QPSK(x)
+    return mod[np.argmin(np.abs(mod - symbol))]
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--num-symbols", type=int, default=1000)
