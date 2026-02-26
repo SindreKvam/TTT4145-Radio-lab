@@ -1,12 +1,11 @@
 #pragma once
 
-#include <iostream>
-#include <vector>
+#include <algorithm>
 #include <cmath>
 #include <complex>
-#include <algorithm>
-
-
+#include <cstdint>
+#include <iostream>
+#include <vector>
 
 /**
  * @brief does modulation and demodulation initiate with children class
