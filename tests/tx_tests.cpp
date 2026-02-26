@@ -64,3 +64,21 @@ TEST_P(MQamModulationTestFixture, MQamModulation) {
 // Run testcase with multiple different parameter values
 INSTANTIATE_TEST_CASE_P(MQamModulationTests, MQamModulationTestFixture,
                         ::testing::Values(4, 16, 64, 256, 1024));
+
+TEST(Modem, MQamDemodulation) {
+
+    QAM mqam = QAM(16);
+
+    std::complex<float> sample(1.0, 1.0);
+
+    EXPECT_EQ(mqam.demodulate(sample), 2);
+}
+
+TEST(Modem, MQamModem) {
+
+    QAM mqam = QAM(16);
+
+    for (uint16_t i = 0; i < 16; ++i) {
+        EXPECT_EQ(mqam.demodulate(mqam.modulate(i)), i);
+    }
+}
