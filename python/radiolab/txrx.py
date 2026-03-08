@@ -89,11 +89,13 @@ def main():
     qpsk = modem.Qam(4)
 
     # Instantiate Data (Image)
-    m_bit_image, img_width, img_height = image_to_m_bit(image_path, M, scale=0.01)
-    data = np.astype(m_bit_image.flatten(), int)  # Pure data containing image
-    num_symbols = len(data)
+    m_bit_image, img_width, img_height = image_to_m_bit(image_path, M, scale=0.02)
+    payload = np.astype(m_bit_image.flatten(), int)  # Pure data containing image
+    num_symbols = len(payload)
+
     # TODO:
     # Pack data with preamble, barker code etc.
+    data = payload
 
     # Modulate data
     # TODO: Do this better in Cpp
