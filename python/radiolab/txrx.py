@@ -90,8 +90,10 @@ def main():
 
     # Instantiate Data (Image)
     m_bit_image, img_width, img_height = image_to_m_bit(image_path, M, scale=0.01)
-    data = np.astype(m_bit_image.flatten(), int)
+    data = np.astype(m_bit_image.flatten(), int)  # Pure data containing image
     num_symbols = len(data)
+    # TODO:
+    # Pack data with preamble, barker code etc.
 
     # Modulate data
     # TODO: Do this better in Cpp
@@ -117,7 +119,7 @@ def main():
     # fs = int(sdr.sample_rate)
     del sdr
 
-    # Coarse frequency adjustment
+    # TODO: Coarse frequency adjustment
     # raised_receive_data = np.pow(received_data, M)
     # Fx = np.fft.fft(raised_receive_data, 256)
     # f = np.fft.fftfreq(256, 1 / fs)
@@ -130,7 +132,16 @@ def main():
 
     # Perform matched filtering
     matched_filtered_data = np.convolve(received_data, rrc_coeff, mode="same")
-    # Downsample, assume we have perfect sampling
+
+    # Downsample
+    # TODO: Do this in a nice way
+    # Timing recovery?, Gardner?
+    # downsampled_data = np.zeros_like(modulated_data)
+    # for byte_idx in range(0, matched_filtered_data.size, sps * 2):
+    # plt.plot(matched_filtered_data[byte_idx : byte_idx + sps])
+    # plt.show()
+    # exit()
+    # For now, fetch the sampled data and assume we have perfect sample timing
     matched_filtered_data = matched_filtered_data[::sps]
 
     k_p = 0.0222
@@ -144,12 +155,14 @@ def main():
     matched_filtered_data.real /= np.max(matched_filtered_data.real)
     matched_filtered_data.imag /= np.max(matched_filtered_data.imag)
 
+    # Phase locked loop
+    # TODO: implement this in Cpp instead
     for i, x in enumerate(matched_filtered_data):
         x *= np.exp(-1j * state.theta)
         phase_locked_data[i] = x
 
         # Phase detector
-        closest_symbol = qam.demodulate(x)
+        closest_symbol = qam.modulate(qam.demodulate(x))
 
         # e[i] = np.imag(x * np.conj(closest_symbol))
         e[i] = np.angle(x * np.conj(closest_symbol))
@@ -187,18 +200,24 @@ def main():
 
     # Decode data
     decoded_data = np.zeros_like(data)
-    for idx, val in enumerate(phase_locked_data):
+    for idx, val in enumerate(matched_filtered_data):
         decoded_data[idx] = qam.demodulate(val)
 
     print(f"Original data: {data}")
     print(f"Decoded data: {decoded_data}")
 
-    fig, ax = plt.subplots(2, 1)
+    fig, ax = plt.subplots(3, 1)
     ax[0].set_title("Transmitted image")
-    ax[0].imshow(np.reshape(data, (img_height, img_width)))
-    ax[0].set_title("Received image")
-    ax[1].imshow(np.reshape(decoded_data, (img_height, img_width)))
+    ax[0].imshow(np.reshape(data, (img_height, img_width)), cmap="gray")
+    ax[1].set_title("Received image (matched filtered data)")
+    ax[1].imshow(np.reshape(decoded_data, (img_height, img_width)), cmap="gray")
 
+    decoded_data = np.zeros_like(data)
+    for idx, val in enumerate(phase_locked_data):
+        decoded_data[idx] = qam.demodulate(val)
+
+    ax[2].set_title("Received image (phase locked loop data)")
+    ax[2].imshow(np.reshape(decoded_data, (img_height, img_width)), cmap="gray")
     plt.show()
 
 
