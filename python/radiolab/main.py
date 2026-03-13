@@ -1,7 +1,11 @@
 import argparse
 import logging
+import multiprocessing as mp
 import queue
 
+from pipeline.dsp_worker import dsp_worker
+from pipeline.rx_worker import rx_worker
+from pipeline.tx_worker import tx_worker
 from radio import connect_and_configure_pluto
 
 logger = logging.getLogger(__name__)
@@ -10,10 +14,18 @@ logger = logging.getLogger(__name__)
 def main(**kwargs):
     rx_queue = queue.Queue()
     tx_queue = queue.Queue()
-
-    print(kwargs)
+    gui_queue = queue.Queue()
 
     sdr = connect_and_configure_pluto(**kwargs)
+
+    processes = []
+    tx_process = mp.Process(target=tx_worker, args=(sdr, tx_queue))
+    rx_process = mp.Process(target=rx_worker, args=(sdr, rx_queue))
+    sdr_process = mp.Process(target=dsp_worker, args=(rx_queue))
+
+    processes = [tx_process, rx_process]
+    for p in processes:
+        p.start()
 
 
 if __name__ == "__main__":

@@ -1,7 +1,6 @@
 """This module contains all methods needed to generate a data package
 and to be ready for transmitting data"""
 
-import queue
 import time
 
 import adi
@@ -92,15 +91,6 @@ def tx_main(sdr: adi.Pluto, transmit_data: np.ndarray):
 
         print("transmitting")
         time.sleep(0.1)
-
-
-def tx_worker(sdr: adi.Pluto, tx_queue: queue.Queue):
-    """"""
-
-    while True:
-        transmit_data = tx_queue.get(block=True)
-        sdr.tx(transmit_data)
-        tx_queue.task_done()
 
 
 if __name__ == "__main__":
