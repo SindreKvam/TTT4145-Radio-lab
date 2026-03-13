@@ -1,3 +1,4 @@
+import time
 from dataclasses import dataclass
 
 import adi
@@ -5,7 +6,10 @@ import fir_filter
 import matplotlib.pyplot as plt
 import modem
 import numpy as np
+import scipy
+import tx
 from image_manipulator import image_path, image_to_m_bit
+from radio import connect_and_configure_pluto
 
 
 @dataclass
@@ -13,61 +17,6 @@ class state:
     theta = 0  # Phase estimate
     integrator = 0  # integrator state
     agc = 1
-
-
-def int_to_m_bit_chunks(number, total_bits, chunk_size):
-    """
-    Converts an integer to a list of m-bit integer chunks.
-
-    Args:
-        number (int): The input integer.
-        total_bits (int): The total number of bits for the integer (N).
-        chunk_size (int): The size of each chunk in bits (M).
-
-    Returns:
-        list: A list of integers, each representing an m-bit chunk.
-    """
-    if total_bits % chunk_size != 0:
-        raise ValueError("Total bits must be an exact multiple of the chunk size.")
-
-    # Format the number into a zero-padded binary string of N bits
-    binary_string = format(number, f"0{total_bits}b")
-
-    # Split the binary string into chunks of M bits
-    chunks = []
-    for i in range(0, total_bits, chunk_size):
-        chunk_str = binary_string[i : i + chunk_size]
-        # Convert each binary chunk string back to an integer
-        chunks.append(int(chunk_str, 2))
-
-    return chunks
-
-
-def connect_and_configure_pluto(N, sps=8) -> adi.Pluto:
-    """Connect to an Adalm Pluto software defined radio and configure it"""
-    sdr = adi.Pluto("usb:")
-
-    # Configure properties
-    sdr.rx_rf_bandwidth = 4000000
-    sdr.rx_lo = 2000000000
-    sdr.tx_lo = 2000000000
-    sdr.tx_cyclic_buffer = True
-    sdr.tx_hardwaregain_chan0 = -30
-    sdr.rx_buffer_size = N * sps
-    sdr.gain_control_mode_chan0 = "manual"
-
-    phy = sdr.ctx.find_device("ad9361-phy")
-    rx0 = phy.find_channel("voltage0", False)  # False => RX/input channel
-    print(list(rx0.attrs.keys()))
-
-    # disable quadrature tracking:
-    rx0.attrs["quadrature_tracking_en"] = "0"
-
-    # Disable DC tracking only if needed
-    rx0.attrs["rf_dc_offset_tracking_en"].value = "0"
-    rx0.attrs["bb_dc_offset_tracking_en"].value = "0"
-
-    return sdr
 
 
 def transmit_and_receive(sdr: adi.Pluto, transmit_data: np.ndarray):
@@ -95,6 +44,8 @@ def transmit_and_receive(sdr: adi.Pluto, transmit_data: np.ndarray):
     # Send data
     sdr.tx(transmit_data)
 
+    time.sleep(1)
+
     return sdr.rx()
     # Collect data
     # for r in range(20):
@@ -118,18 +69,20 @@ def transmit_and_receive(sdr: adi.Pluto, transmit_data: np.ndarray):
 
 
 def main():
+    M = 4
     sps = 8
     pll_preamble_length = 1200
 
     # Instantiate pulse shaping filter
     rrc = fir_filter.RootRaisedCosine(0.2, 10, sps)
     rrc_coeff = np.array(rrc.get_coefficients())
+    filter_state = scipy.signal.lfiltic(rrc_coeff, 1, 0)
 
-    M = 4
+    # Instantiate modem
     qam = modem.Qam(M)
     qpsk = modem.Qam(4)
 
-    # ---------- START RX ----------
+    # ---------- START TX ----------
 
     # Instantiate Payload (Image)
     m_bit_image, img_width, img_height = image_to_m_bit(image_path, M, scale=0.02)
@@ -143,72 +96,90 @@ def main():
 
     # Include code with nice autocorrelation function
     # https://ntrs.nasa.gov/api/citations/19800017860/downloads/19800017860.pdf
-    nasa_32_bit_code = 0x89445BC1
-    nasa_36_bit_code = 0xC6859AE80
-    nasa_64_bit_code = 0xEC10845E8B3CB0AC
-    nasa_code = np.array(
-        int_to_m_bit_chunks(nasa_32_bit_code, 32, int(np.log2(M))), dtype=int
-    )
-
-    modulated_nasa_code = np.zeros_like(nasa_code, dtype=complex)
-    for idx, val in enumerate(nasa_code):
-        modulated_nasa_code[idx] = qam.modulate(val)
+    # nasa_32_bit_code = 0x89445BC1
+    # nasa_36_bit_code = 0xC6859AE80
+    # nasa_64_bit_code = 0xEC10845E8B3CB0AC
+    # nasa_code = np.array(
+    #     int_to_m_bit_chunks(nasa_32_bit_code, 32, int(np.log2(M))), dtype=int
+    # )
+    #
+    # modulated_nasa_code = np.zeros_like(nasa_code, dtype=complex)
+    # for idx, val in enumerate(nasa_code):
+    #     modulated_nasa_code[idx] = qam.modulate(val)
+    modulated_code = tx.get_modulated_codeword(qam, 32, modulation=M)
 
     # Add preamble for PLL sync
-    pll_sync_preamble = np.array(
-        [1.0 + 1.0j, -1.0 + 1.0j, -1.0 - 1.0j, 1.0 - 1.0j] * (pll_preamble_length // 4)
-    )
+    # pll_sync_preamble = np.array(
+    #     [1.0 + 1.0j, -1.0 + 1.0j, -1.0 - 1.0j, 1.0 - 1.0j] * (pll_preamble_length // 4)
+    # )
+    pll_sync_preamble = tx.get_pll_preamble()
 
     # Create full message to transmit
     print(
-        f"Length nasa code: {len(modulated_nasa_code)}, "
+        f"Length nasa code: {len(modulated_code)}, "
         + f"pll preamble: {len(pll_sync_preamble)}, "
         + f"data: {len(modulated_data)}"
     )
-    modulated_data = np.concatenate(
-        (modulated_nasa_code, pll_sync_preamble, modulated_data)
-    )
+    # modulated_data = np.concatenate(
+    #     (modulated_nasa_code, pll_sync_preamble, modulated_data)
+    # )
+    modulated_data = np.concatenate((modulated_code, pll_sync_preamble, modulated_data))
     num_symbols = len(modulated_data)
 
     # Oversample data
-    oversampled_data = np.zeros((num_symbols * sps,), dtype=complex)
-    oversampled_data[::sps] = modulated_data
+    # oversampled_data = np.zeros((num_symbols * sps,), dtype=complex)
+    # oversampled_data[::sps] = modulated_data
+    oversampled_data = tx.oversample_data(modulated_data, sps)
 
     # Pulse shape data
+    # pulse_shaped_data, filter_state = scipy.signal.lfilter(
+    #     rrc_coeff, 1, oversampled_data, zi=filter_state
+    # )
     pulse_shaped_data = np.convolve(oversampled_data, rrc_coeff, mode="same")
 
     # Send ADC maximum
     pulse_shaped_data *= 2**14
 
-    # ---------- END RX ----------
+    # ---------- END TX ----------
 
     # Connect to Pluto and configure
-    sdr = connect_and_configure_pluto(num_symbols, sps)
+    sdr = connect_and_configure_pluto(
+        num_symbols,
+        rx_lo=2_000_000_000,
+        tx_lo=2_000_000_000,
+        sps=sps,
+        tx_cyclic_buffer=True,
+    )
 
     # Transmit and receive one buffer of data
     received_data = transmit_and_receive(sdr, transmit_data=pulse_shaped_data)
     # fs = int(sdr.sample_rate)
     del sdr
 
-    # ---------- START TX ----------
+    # ---------- START RX ----------
 
     # TODO: Coarse frequency adjustment
     # raised_receive_data = np.pow(received_data, M)
     # Fx = np.fft.fft(raised_receive_data, 256)
     # f = np.fft.fftfreq(256, 1 / fs)
     #
-    # fft_peak = np.argmax(Fx)
-    # f_peak = fft_peak * fs / M
+    # fft_peak = np.argmax(np.abs(Fx))
+    # f_peak = fft_peak * fs / 256
     # print(fft_peak, f_peak)
     #
     # received_data *= np.exp(-1j * 2 * np.pi * f_peak)
+    #
+    # plt.plot(f, np.abs(Fx))
+    # plt.show()
 
     # Perform matched filtering
-    matched_filtered_data = np.convolve(received_data, rrc_coeff, mode="same")
+    matched_filtered_data, filter_state = scipy.signal.lfilter(
+        rrc_coeff, 1, oversampled_data, zi=filter_state
+    )
 
     # Find the start of packet by correlating with nasa code
     # Perform the same operations to the code as has been done with the data
-    pulse_shaped_code = np.convolve(modulated_nasa_code, rrc_coeff, mode="same")
+    pulse_shaped_code = np.convolve(modulated_code, rrc_coeff, mode="same")
     matched_filtered_code = np.convolve(pulse_shaped_code, rrc_coeff, mode="same")
 
     oversampled_code = np.zeros((len(matched_filtered_code) * sps,), dtype=complex)
@@ -242,7 +213,7 @@ def main():
 
     # Remove sync code from the data
     matched_filtered_data = matched_filtered_data[
-        len(nasa_code) * sps // 2 : -len(nasa_code) * sps // 2
+        len(modulated_code) * sps // 2 : -len(modulated_code) * sps // 2
     ]
 
     # Downsample
@@ -304,7 +275,7 @@ def main():
         state.theta += state.integrator + k_p * e[i]
         theta[i] = state.theta
 
-    # ---------- END TX ----------
+    # ---------- END RX ----------
 
     plt.figure(tight_layout=True)
     plt.title("Data transmitted and received")
