@@ -174,7 +174,7 @@ def main():
 
     # Perform matched filtering
     matched_filtered_data, filter_state = scipy.signal.lfilter(
-        rrc_coeff, 1, oversampled_data, zi=filter_state
+        rrc_coeff, 1, received_data, zi=filter_state
     )
 
     # Find the start of packet by correlating with nasa code
