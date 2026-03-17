@@ -12,7 +12,7 @@
 /**
  * \param beta The roll-off factor.
  * \param span The length of the filter in symbols.
- * \param sps Samples per symbol
+ * \param sps Samples per symbol (oversampling).
  **/
 RootRaisedCosine::RootRaisedCosine(float beta, int span, int sps)
     : Fir(span * sps + 1) {
