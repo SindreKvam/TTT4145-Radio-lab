@@ -1,0 +1,39 @@
+# Radiolab Configuration File
+# This file contains all configuration parameters for the continuous TX/RX demo
+
+[phy]
+# Physical layer parameters
+modulation_order = 16             # M-QAM modulation (4, 16, 64, 256)
+samples_per_symbol = 8            # Oversampling factor
+rrc_rolloff = 0.2                 # Root-raised cosine rolloff factor (beta)
+rrc_span = 10                     # Filter span in symbols
+pll_preamble_length = 1200        # PLL sync preamble length in symbols
+pll_kp = 0.0222                   # PLL proportional gain
+pll_ki = 0.00024                  # PLL integral gain
+nasa_codeword_bits = 32           # NASA sync codeword length (32, 36, or 64)
+
+[radio]
+# Radio hardware configuration
+rx_lo = 2_000_000_000             # RX local oscillator frequency (Hz)
+tx_lo = 2_000_000_000             # TX local oscillator frequency (Hz)
+tx_gain = -30                     # TX hardware gain (dB)
+rx_rf_bandwidth = 4_000_000       # RX RF bandwidth (Hz)
+tx_cyclic_buffer = false          # TX cyclic buffer mode
+gain_control_mode = "manual"      # Gain control mode
+quadrature_tracking_en = false    # Quadrature tracking enable
+rf_dc_offset_tracking_en = true   # RF DC offset tracking enable
+bb_dc_offset_tracking_en = true   # Baseband DC offset tracking enable
+uri = "usb:"                      # Radio device URI
+
+[app]
+# Application layer parameters
+image_path = ""                   # Path to image (empty = use default)
+image_scale = 0.02                # Image scaling factor (smaller = faster TX)
+use_camera = false                # Use camera instead of static image
+camera_device = 0                 # Camera device ID (0 = default camera)
+
+[gui]
+# GUI parameters
+update_rate_ms = 50               # GUI update rate in milliseconds (20 FPS)
+queue_maxsize = 10                # Maximum queue size for backpressure
+plot_history_length = 2000        # Number of samples to show in time plots
