@@ -8,7 +8,7 @@ import modem
 import numpy as np
 import scipy
 import tx
-from image_manipulator import image_path, image_to_m_bit
+from app.sources import image_path, image_to_m_bit
 from radio import connect_and_configure_pluto
 
 
