@@ -8,6 +8,7 @@ import modem
 import numpy as np
 import scipy
 from app.sources import image_path, image_to_m_bit
+from phy.rx import ModemRx
 from phy.tx import ModemTx
 from radio import connect_and_configure_pluto
 from tx import get_pll_preamble
@@ -71,6 +72,7 @@ def transmit_and_receive(sdr: adi.Pluto, transmit_data: np.ndarray):
 
 def main():
     M = 4
+    threshold = 1000 / np.log2(M)
     sps = 8
     pll_preamble_length = 600
 
@@ -93,7 +95,7 @@ def main():
     payload_with_preamble = tx_modem.add_pll_preamble(
         modulated_payload, preamble_length=pll_preamble_length
     )
-    modulated_data = tx_modem.add_modulated_codeword(payload_with_preamble, 32)
+    modulated_data = tx_modem.add_modulated_codeword(payload_with_preamble, 64)
 
     num_symbols = len(modulated_data)
 
@@ -104,12 +106,13 @@ def main():
     pulse_shaped_data *= 2**14
 
     # ---------- END TX ----------
+    # ---------- START HW ----------
 
     # Connect to Pluto and configure
     sdr = connect_and_configure_pluto(
         num_symbols,
-        rx_lo=2_000_000_000,
-        tx_lo=2_000_000_000,
+        rx_lo=2_400_000_000,
+        tx_lo=2_400_000_000,
         sps=sps,
         tx_cyclic_buffer=True,
     )
@@ -119,7 +122,12 @@ def main():
     # fs = int(sdr.sample_rate)
     del sdr
 
+    # ---------- END HW ----------
     # ---------- START RX ----------
+
+    rx_modem = ModemRx(qam, sps, rrc_coeff)
+
+    matched_filtered_data = rx_modem.matched_filtering(received_data)
 
     # TODO: Coarse frequency adjustment
     # raised_receive_data = np.pow(received_data, M)
@@ -135,109 +143,48 @@ def main():
     # plt.plot(f, np.abs(Fx))
     # plt.show()
 
-    # Perform matched filtering
-    matched_filtered_data, filter_state = scipy.signal.lfilter(
-        rrc_coeff, 1, received_data, zi=filter_state
-    )
-
-    # Find the start of packet by correlating with nasa code
-    # Perform the same operations to the code as has been done with the data
-    modulated_code = tx_modem.modulate_payload(tx_modem._get_codeword(32))
+    # get the codeword and do pulse shaping and matched filtering on it
+    modulated_code = tx_modem.modulate_payload(tx_modem._get_codeword(64))
     pulse_shaped_code = np.convolve(modulated_code, rrc_coeff, mode="same")
     matched_filtered_code = np.convolve(pulse_shaped_code, rrc_coeff, mode="same")
 
-    oversampled_code = np.zeros((len(matched_filtered_code) * sps,), dtype=complex)
-    oversampled_code[::sps] = matched_filtered_code
+    # Recover timing
+    matched_filtered_data = rx_modem.recover_timing(matched_filtered_data)
 
     correlation = np.pow(
         np.abs(
             np.correlate(
                 matched_filtered_data / np.max(matched_filtered_data),
-                oversampled_code,
+                matched_filtered_code,
                 mode="same",
             )
         ),
         2,
     )
-    # Index of start of data after downsampling
-    # start_of_data_index = np.argmax(correlation) // 8 + int(np.log2(M)) - 1
-    start_of_data_index = np.argmax(correlation) + sps * (int(np.log2(M)) - 1)
-    print(start_of_data_index)
 
     plt.figure()
     plt.plot(correlation)
-    plt.title("Correlation between received data and nasa code")
+    plt.title("Correlation")
+    plt.show()
 
-    # Rearrange data based on where the start is
-    # This only works here, because the transmitter is using a circular buffer
-    # Meaning that the data before the beginning of the message, is the end of the
-    # previous message (which contains the same data)
-    matched_filtered_data = np.concatenate(
-        (
-            matched_filtered_data[start_of_data_index:],
-            matched_filtered_data[:start_of_data_index],
-        )
-    )
+    try:
+        start_of_data_index = rx_modem.detect_codeword(
+            matched_filtered_data, matched_filtered_code, threshold=threshold
+        )[0]
+    except IndexError:
+        print("Error, no start of packet found")
+        exit()
 
     # Remove sync code from the data
-    matched_filtered_data = matched_filtered_data[
-        len(modulated_code) * sps // 2 : -len(modulated_code) * sps // 2
-    ]
-
-    # Downsample
-    # TODO: Do this in a nice way
-    # Timing recovery?, Gardner?
-    # downsampled_data = np.zeros_like(modulated_data)
-    # for byte_idx in range(0, matched_filtered_data.size, sps * 2):
-    # plt.plot(matched_filtered_data[byte_idx : byte_idx + sps])
-    # plt.show()
-    # exit()
-    # For now, fetch the sampled data and assume we have perfect sample timing
-    matched_filtered_data = matched_filtered_data[::sps]
-
-    # Normalize for the decoding to work nicely
-    # TODO: Find a better way of doing this. Equalization?
-    # TODO: Add automatic gain control??
-    # matched_filtered_data.real /= np.max(matched_filtered_data.real)
-    # matched_filtered_data.imag /= np.max(matched_filtered_data.imag)
-    matched_filtered_data /= np.max(matched_filtered_data)
-
-    print(
-        f"Length after downsample and removed nasa code: {len(matched_filtered_data)}"
+    matched_filtered_data = rx_modem.remove_codeword(
+        matched_filtered_data, start_of_data_index, len(modulated_code)
     )
 
-    k_p = 0.0222
-    k_i = 0.00024
+    # TODO, replace this with AGC?
+    matched_filtered_data /= np.max(matched_filtered_data)
 
-    e = np.zeros(len(matched_filtered_data))
-    theta = np.zeros(len(matched_filtered_data))
-    phase_locked_data = np.zeros_like(matched_filtered_data)
-
-    pll_sync_preamble = get_pll_preamble(pll_preamble_length=pll_preamble_length)
-    # Phase locked loop
-    # TODO: implement this in Cpp instead
-    for i, x in enumerate(matched_filtered_data):
-        x *= np.exp(-1j * state.theta)
-        phase_locked_data[i] = x
-
-        # Phase detector
-        if i < pll_preamble_length:
-            # closest_symbol = qpsk.modulate(qpsk.demodulate(x))
-            # Use the fact that we know the preamble
-            closest_symbol = pll_sync_preamble[i]
-        else:
-            closest_symbol = qam.modulate(qam.demodulate(x))
-
-        if i < 10:
-            print(x, closest_symbol)
-
-        # e[i] = np.imag(x * np.conj(closest_symbol))
-        e[i] = np.angle(x * np.conj(closest_symbol))
-
-        # Loop filter
-        state.integrator = state.integrator + k_i * e[i]
-        state.theta += state.integrator + k_p * e[i]
-        theta[i] = state.theta
+    pll_preamble = get_pll_preamble(pll_preamble_length)
+    phase_locked_data = rx_modem.phase_locked_loop(matched_filtered_data, pll_preamble)
 
     # ---------- END RX ----------
 
@@ -280,24 +227,28 @@ def main():
     ax[3, 1].set_title("Phase locked data (payload)")
 
     # Plot PLL error
-    fig, ax = plt.subplots(1, 1, tight_layout=True)
-    ax.plot(e, label="error")
-    ax.axvline(pll_preamble_length, color="r", label="End of preamble", alpha=0.5)
-    ax_t = ax.twinx()
-    ax_t.plot(theta, label="theta", color="C1")
-    ax.set_ylabel("Error (rad)")
-    ax_t.set_ylabel("Theta (rad)")
+    # fig, ax = plt.subplots(1, 1, tight_layout=True)
+    # ax.plot(e, label="error")
+    # ax.axvline(pll_preamble_length, color="r", label="End of preamble", alpha=0.5)
+    # ax_t = ax.twinx()
+    # ax_t.plot(theta, label="theta", color="C1")
+    # ax.set_ylabel("Error (rad)")
+    # ax_t.set_ylabel("Theta (rad)")
 
     matched_filtered_data = matched_filtered_data[pll_preamble_length:]
     phase_locked_data = phase_locked_data[pll_preamble_length:]
 
     # Decode data
-    decoded_data = np.zeros_like(matched_filtered_data, dtype=int)
+    decoded_data = np.zeros_like(payload)
     for idx, val in enumerate(matched_filtered_data):
+        if idx >= len(payload):
+            break
         decoded_data[idx] = qam.demodulate(val)
 
     decoded_pll_data = np.zeros_like(payload)
     for idx, val in enumerate(phase_locked_data):
+        if idx >= len(payload):
+            break
         decoded_pll_data[idx] = qam.demodulate(val)
 
     print(f"Original payload: {payload}")
