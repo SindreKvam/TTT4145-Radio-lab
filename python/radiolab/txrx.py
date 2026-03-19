@@ -7,9 +7,10 @@ import matplotlib.pyplot as plt
 import modem
 import numpy as np
 import scipy
-import tx
 from app.sources import image_path, image_to_m_bit
+from phy.tx import ModemTx
 from radio import connect_and_configure_pluto
+from tx import get_pll_preamble
 
 
 @dataclass
@@ -71,7 +72,7 @@ def transmit_and_receive(sdr: adi.Pluto, transmit_data: np.ndarray):
 def main():
     M = 4
     sps = 8
-    pll_preamble_length = 1200
+    pll_preamble_length = 600
 
     # Instantiate pulse shaping filter
     rrc = fir_filter.RootRaisedCosine(0.2, 10, sps)
@@ -80,62 +81,24 @@ def main():
 
     # Instantiate modem
     qam = modem.Qam(M)
-    qpsk = modem.Qam(4)
-
-    # ---------- START TX ----------
 
     # Instantiate Payload (Image)
     m_bit_image, img_width, img_height = image_to_m_bit(image_path, M, scale=0.02)
     payload = np.astype(m_bit_image.flatten(), int)  # Pure data containing image
 
-    # Modulate payload
-    # TODO: Do this better in Cpp
-    modulated_data = np.zeros_like(payload, dtype=complex)
-    for idx, val in enumerate(payload):
-        modulated_data[idx] = qam.modulate(val)
+    # ---------- START TX ----------
+    tx_modem = ModemTx(qam, sps, rrc_coeff)
 
-    # Include code with nice autocorrelation function
-    # https://ntrs.nasa.gov/api/citations/19800017860/downloads/19800017860.pdf
-    # nasa_32_bit_code = 0x89445BC1
-    # nasa_36_bit_code = 0xC6859AE80
-    # nasa_64_bit_code = 0xEC10845E8B3CB0AC
-    # nasa_code = np.array(
-    #     int_to_m_bit_chunks(nasa_32_bit_code, 32, int(np.log2(M))), dtype=int
-    # )
-    #
-    # modulated_nasa_code = np.zeros_like(nasa_code, dtype=complex)
-    # for idx, val in enumerate(nasa_code):
-    #     modulated_nasa_code[idx] = qam.modulate(val)
-    modulated_code = tx.get_modulated_codeword(qam, 32, modulation=M)
-
-    # Add preamble for PLL sync
-    # pll_sync_preamble = np.array(
-    #     [1.0 + 1.0j, -1.0 + 1.0j, -1.0 - 1.0j, 1.0 - 1.0j] * (pll_preamble_length // 4)
-    # )
-    pll_sync_preamble = tx.get_pll_preamble()
-
-    # Create full message to transmit
-    print(
-        f"Length nasa code: {len(modulated_code)}, "
-        + f"pll preamble: {len(pll_sync_preamble)}, "
-        + f"data: {len(modulated_data)}"
+    modulated_payload = tx_modem.modulate_payload(payload)
+    payload_with_preamble = tx_modem.add_pll_preamble(
+        modulated_payload, preamble_length=pll_preamble_length
     )
-    # modulated_data = np.concatenate(
-    #     (modulated_nasa_code, pll_sync_preamble, modulated_data)
-    # )
-    modulated_data = np.concatenate((modulated_code, pll_sync_preamble, modulated_data))
+    modulated_data = tx_modem.add_modulated_codeword(payload_with_preamble, 32)
+
     num_symbols = len(modulated_data)
 
-    # Oversample data
-    # oversampled_data = np.zeros((num_symbols * sps,), dtype=complex)
-    # oversampled_data[::sps] = modulated_data
-    oversampled_data = tx.oversample_data(modulated_data, sps)
-
-    # Pulse shape data
-    # pulse_shaped_data, filter_state = scipy.signal.lfilter(
-    #     rrc_coeff, 1, oversampled_data, zi=filter_state
-    # )
-    pulse_shaped_data = np.convolve(oversampled_data, rrc_coeff, mode="same")
+    oversampled_data = tx_modem.upsample(modulated_data)
+    pulse_shaped_data = tx_modem.pulse_shape(oversampled_data)
 
     # Send ADC maximum
     pulse_shaped_data *= 2**14
@@ -179,6 +142,7 @@ def main():
 
     # Find the start of packet by correlating with nasa code
     # Perform the same operations to the code as has been done with the data
+    modulated_code = tx_modem.modulate_payload(tx_modem._get_codeword(32))
     pulse_shaped_code = np.convolve(modulated_code, rrc_coeff, mode="same")
     matched_filtered_code = np.convolve(pulse_shaped_code, rrc_coeff, mode="same")
 
@@ -204,6 +168,10 @@ def main():
     plt.plot(correlation)
     plt.title("Correlation between received data and nasa code")
 
+    # Rearrange data based on where the start is
+    # This only works here, because the transmitter is using a circular buffer
+    # Meaning that the data before the beginning of the message, is the end of the
+    # previous message (which contains the same data)
     matched_filtered_data = np.concatenate(
         (
             matched_filtered_data[start_of_data_index:],
@@ -234,11 +202,6 @@ def main():
     # matched_filtered_data.imag /= np.max(matched_filtered_data.imag)
     matched_filtered_data /= np.max(matched_filtered_data)
 
-    # Rearrange data based on where the start is
-    # This only works here, because the transmitter is using a circular buffer
-    # Meaning that the data before the beginning of the message, is the end of the
-    # previous message (which contains the same data)
-
     print(
         f"Length after downsample and removed nasa code: {len(matched_filtered_data)}"
     )
@@ -250,6 +213,7 @@ def main():
     theta = np.zeros(len(matched_filtered_data))
     phase_locked_data = np.zeros_like(matched_filtered_data)
 
+    pll_sync_preamble = get_pll_preamble(pll_preamble_length=pll_preamble_length)
     # Phase locked loop
     # TODO: implement this in Cpp instead
     for i, x in enumerate(matched_filtered_data):

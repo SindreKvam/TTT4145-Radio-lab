@@ -1,6 +1,8 @@
 import modem
 import numpy as np
 
+from radiolab.tx import int_to_m_bit_chunks
+
 NASA_CODEWORDS: dict[int, int] = {
     32: 0x89445BC1,
     36: 0xC6859AE80,
@@ -9,10 +11,12 @@ NASA_CODEWORDS: dict[int, int] = {
 
 
 class ModemTx:
-    def __init__(self, qam: modem.Qam, sps: int) -> None:
+    def __init__(self, qam: modem.Qam, sps: int, filter_coeff: np.ndarray) -> None:
         self.qam = qam
         self.sps = sps
-        self.filter_coeff = None
+        self.filter_coeff = filter_coeff
+
+        self.M = len(self.qam.get_lookup_table())
 
     def modulate_payload(self, payload: np.ndarray):
         """Modulate payload"""
@@ -44,8 +48,23 @@ class ModemTx:
 
         return np.convolve(data, self.filter_coeff, mode="same")
 
+    def _get_codeword(self, code_length):
+        return np.array(
+            int_to_m_bit_chunks(
+                NASA_CODEWORDS[code_length], code_length, int(np.log2(self.M))
+            ),
+            dtype=int,
+        )
+
     def add_codeword(self, data: np.ndarray, code_length: int = 32) -> bytes:
         """Prefix data with a codeword with nice autocorrelation features"""
 
-        codeword = NASA_CODEWORDS[code_length]
+        codeword = self._get_codeword(code_length)
+        return np.concatenate((codeword, data))
+
+    def add_modulated_codeword(self, data: np.ndarray, code_length: int = 32):
+        """Prefix data with a modulated codeword with nice autocorrelation features"""
+
+        codeword = self._get_codeword(code_length)
+        codeword = self.modulate_payload(codeword)
         return np.concatenate((codeword, data))
