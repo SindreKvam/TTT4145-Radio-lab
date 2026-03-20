@@ -11,7 +11,9 @@ dependencies = [
     "pytest==9.0.2",
     "matplotlib==3.10.8",
     "scipy==1.15.3",
-    "opencv-python==4.13.0.92",
+    "opencv-python-headless==4.13.0.92",
+    "pyqt5==5.15.11",
+    "pyqtgraph==0.14.0",
 ]
 
 [tool.scikit-build]
