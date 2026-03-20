@@ -2,46 +2,69 @@ import argparse
 import logging
 import multiprocessing as mp
 import queue
+from threading import Event
 
-from pipeline.dsp_worker import dsp_worker
-from pipeline.rx_worker import rx_worker
-from pipeline.tx_worker import tx_worker
+from pipeline.gui_worker import GuiWorker
+from pipeline.hardware_worker import HardwareWorker
+from pipeline.rx_worker import RxWorker
+from pipeline.tx_worker import TxWorker
 from radio import connect_and_configure_pluto
 
+from radiolab.config.config import Config
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(asctime)s] %(levelname)s [%(name)s] %(message)s",
+    datefmt="%H:%M:%S",
+)
 logger = logging.getLogger(__name__)
 
 
 def main(**kwargs):
-    rx_queue = queue.Queue()
-    tx_queue = queue.Queue()
-    gui_queue = queue.Queue()
+    rx_queue = queue.Queue(maxsize=10)
+    tx_queue = queue.Queue(maxsize=10)
+    gui_queue = mp.Queue(maxsize=8)
 
     sdr = connect_and_configure_pluto(**kwargs)
 
-    processes = []
-    tx_process = mp.Process(target=tx_worker, args=(sdr, tx_queue))
-    rx_process = mp.Process(target=rx_worker, args=(sdr, rx_queue))
-    sdr_process = mp.Process(target=dsp_worker, args=(rx_queue))
+    config = Config.default()
+    stop_event = Event()
 
-    processes = [tx_process, rx_process]
+    processes = []
+    processes.append(HardwareWorker(sdr, tx_queue, rx_queue, stop_event, config.phy))
+    processes.append(TxWorker(tx_queue, gui_queue, config.phy, stop_event))
+    processes.append(
+        RxWorker(
+            rx_queue,
+            gui_queue,
+            config.phy,
+            stop_event,
+            config.radio.time_to_fill_buffer,
+        )
+    )
+    processes.append(GuiWorker(gui_queue, config, stop_event))
+
     for p in processes:
         p.start()
+
+    for p in processes:
+        p.join()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    # parser.add_argument("mode", help="Select mode, rx or tx")
     parser.add_argument(
         "--tx-lo",
-        default=2_000_000_000,
+        default=2_400_000_000,
         type=int,
         help="The local oscillator frequency of the transmitter",
     )
     parser.add_argument(
         "--rx-lo",
-        default=2_000_000_000,
+        default=2_400_000_000,
         type=int,
         help="The local oscillator frequency of the receiver",
     )

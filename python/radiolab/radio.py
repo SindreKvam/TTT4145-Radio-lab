@@ -4,11 +4,12 @@ import adi
 
 
 def connect_and_configure_pluto(
-    N,
+    buffer_size,
     rx_lo,
     tx_lo,
     sps,
     tx_cyclic_buffer: bool = False,
+    **kwargs,
 ) -> adi.Pluto:
     """Connect to an Adalm Pluto software defined radio and configure it"""
     sdr = adi.Pluto("usb:")
@@ -19,7 +20,7 @@ def connect_and_configure_pluto(
     sdr.tx_lo = tx_lo
     sdr.tx_cyclic_buffer = tx_cyclic_buffer
     sdr.tx_hardwaregain_chan0 = -30
-    sdr.rx_buffer_size = N * sps
+    sdr.rx_buffer_size = buffer_size * sps * 2
     sdr.gain_control_mode_chan0 = "manual"
 
     phy = sdr.ctx.find_device("ad9361-phy")
