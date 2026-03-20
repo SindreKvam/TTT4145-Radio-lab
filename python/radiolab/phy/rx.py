@@ -18,13 +18,22 @@ class ModemRx:
         )
         return _matched_filtered_data
 
+    def _correlate_with_codeword(
+        self, samples: np.ndarray, code: np.ndarray
+    ) -> np.ndarray:
+        """Correlate with codeword"""
+
+        _correlation = np.correlate(samples / np.max(samples), code, mode="same")
+        _correlation = np.pow(np.abs(_correlation), 2)
+        return _correlation
+
     def detect_codeword(
         self, samples: np.ndarray, code: np.ndarray, threshold: float = None
     ):
         """Find the largest peak in the data based on correlation"""
 
-        _correlation = np.correlate(samples / np.max(samples), code, mode="same")
-        _correlation = np.pow(np.abs(_correlation), 2)
+        _correlation = self._correlate_with_codeword(samples, code)
+
         if threshold is None:
             return np.argmax(_correlation)
 
@@ -37,7 +46,8 @@ class ModemRx:
         raise NotImplementedError
 
     def recover_timing(self, samples: np.ndarray):
-        return samples[:: self.sps]
+        offset = np.argmax(np.abs(samples[: self.sps]))
+        return samples[offset :: self.sps]
 
     def automatic_gain_control(self, samples: np.ndarray):
         """"""
