@@ -2,12 +2,13 @@ import time
 from dataclasses import dataclass
 
 import adi
+import cv2
 import fir_filter
 import matplotlib.pyplot as plt
 import modem
 import numpy as np
 import scipy
-from app.sources import image_path, image_to_m_bit
+from app.sources import array_image_to_m_bit, image_path, image_to_m_bit
 from phy.rx import ModemRx
 from phy.tx import ModemTx
 from radio import connect_and_configure_pluto
@@ -85,8 +86,23 @@ def main():
     qam = modem.Qam(M)
 
     # Instantiate Payload (Image)
-    m_bit_image, img_width, img_height = image_to_m_bit(image_path, M, scale=0.02)
-    payload = np.astype(m_bit_image.flatten(), int)  # Pure data containing image
+    video_capture = True
+
+    if video_capture:
+        cap = cv2.VideoCapture(0)
+        ret, img = cap.read()
+        m_bit_image, img_width, img_height = array_image_to_m_bit(
+            img[:, :, 1], M, scale=0.2
+        )
+        payload = np.astype(m_bit_image.flatten(), int)
+
+    else:
+        m_bit_image, img_width, img_height = image_to_m_bit(image_path, M, scale=0.02)
+        payload = np.astype(m_bit_image.flatten(), int)  # Pure data containing image
+
+    plt.figure()
+    plt.imshow(np.reshape(payload, (img_height, img_width)), cmap="gray")
+    plt.show()
 
     # ---------- START TX ----------
     tx_modem = ModemTx(qam, sps, rrc_coeff)

@@ -6,11 +6,12 @@ from queue import Full, Queue
 # from multiprocessing import Event, Process
 from threading import Event, Thread
 
+import cv2
 import numpy as np
 from fir_filter import RootRaisedCosine
 from modem import Qam
 
-from radiolab.app.sources import image_path, image_to_m_bit
+from radiolab.app.sources import array_image_to_m_bit, image_path, image_to_m_bit
 from radiolab.config.config import PhyConfig
 from radiolab.phy.tx import ModemTx
 
@@ -27,6 +28,7 @@ class Tags(StrEnum):
 @dataclass
 class TxJob:
     payload: np.ndarray
+    metadata: dict = None
     tag: Tags = Tags.UNTAGGED
     repeat: int = 1
 
@@ -52,6 +54,8 @@ class TxWorker(Thread):
         self.stop_event = stop_event
         self.idle_sleep_s = idle_sleep_s
 
+        self.camera = cv2.VideoCapture(0)
+
         try:
             rrc = RootRaisedCosine(
                 self.config.rrc_beta,
@@ -70,7 +74,7 @@ class TxWorker(Thread):
         )
 
     def _generate_image_data_job(self) -> TxJob:
-        """"""
+        """Send constant image stream"""
 
         job = TxJob(payload=None, tag=Tags.IMAGE)
 
@@ -78,19 +82,34 @@ class TxWorker(Thread):
             image_path, self.phy.M, scale=0.02
         )
         job.payload = m_bit_image.flatten().astype(int)
+        job.metadata = {"img_width": img_width, "img_height": img_height}
 
         return job
 
     def _generate_camera_data_job(self) -> TxJob:
-        job = TxJob(tag=Tags.CAMERA)
+        """Connect to camera and take image as quickly as possible"""
+
+        job = TxJob(payload=None, tag=Tags.CAMERA)
+
+        ret, img = self.camera.read()
+        m_bit_image, img_width, img_height = array_image_to_m_bit(
+            img[:, :, 0], self.phy.M, scale=0.2
+        )
+        job.payload = m_bit_image.flatten().astype(int)
+        job.metadata = {"img_width": img_width, "img_height": img_height}
+
+        return job
 
     def _generate_speech_job(self) -> TxJob:
-        job = TxJob(tag=Tags.SPEECH)
+        """"""
+
+        job = TxJob(payload=None, tag=Tags.SPEECH)
+        return job
 
     def run(self) -> None:
         while not self.stop_event.is_set():
             try:
-                job = self._generate_image_data_job()
+                job = self._generate_camera_data_job()
             except Exception as exc:
                 logger.exception(f"Error generating job: {exc}")
 
@@ -102,7 +121,7 @@ class TxWorker(Thread):
     def _handle_job(self, job: TxJob) -> None:
         """Do the actual work of transmitting data"""
         for i in range(job.repeat):
-            data = job.payload
+            data = img = job.payload
 
             data = self.phy.modulate_payload(data)
             data = self.phy.add_pll_preamble(
@@ -117,6 +136,8 @@ class TxWorker(Thread):
                     {
                         "type": "tx_update",
                         "tx_data": data,
+                        "metadata": job.metadata,
+                        "tx_image": img,
                     }
                 )
             except Full:

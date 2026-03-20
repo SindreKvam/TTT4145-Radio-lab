@@ -24,6 +24,14 @@ def image_to_m_bit(image_path: str, M: int = 4, scale=0.1):
     return resized // (256 / M), width, height
 
 
+def array_image_to_m_bit(img: np.ndarray, M: int = 4, scale=1.0):
+    width = int(img.shape[1] * scale)
+    height = int(img.shape[0] * scale)
+    resized = cv2.resize(img, (width, height), interpolation=cv2.INTER_AREA)
+
+    return resized // (256 / M), width, height
+
+
 class ImageSource(Source):
     def __init__(self, image_path: str):
         with open(image_path, "rb") as f:
