@@ -8,7 +8,6 @@ from pipeline.gui_worker import GuiWorker
 from pipeline.hardware_worker import HardwareWorker
 from pipeline.rx_worker import RxWorker
 from pipeline.tx_worker import TxWorker
-from radio import connect_and_configure_pluto
 
 from radiolab.config.config import Config
 
@@ -26,13 +25,11 @@ def main(**kwargs):
     tx_queue = queue.Queue(maxsize=10)
     gui_queue = mp.Queue(maxsize=8)
 
-    sdr = connect_and_configure_pluto(**kwargs)
-
     config = Config.default()
     stop_event = Event()
 
     processes = []
-    processes.append(HardwareWorker(sdr, tx_queue, rx_queue, stop_event, config.phy))
+    processes.append(HardwareWorker(tx_queue, rx_queue, stop_event, config.radio))
     processes.append(TxWorker(tx_queue, gui_queue, config.phy, stop_event))
     processes.append(
         RxWorker(
