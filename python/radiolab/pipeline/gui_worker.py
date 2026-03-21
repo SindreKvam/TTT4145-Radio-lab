@@ -5,8 +5,11 @@ import sys
 from multiprocessing import Event, Process
 from multiprocessing.queues import Empty, Queue
 
+import numpy as np
+
 # from threading import Event, Thread
 import pyqtgraph as pg
+from modem import Qam
 from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QApplication, QGridLayout, QLabel, QMainWindow, QWidget
 
@@ -57,6 +60,12 @@ class LiveDashboard(QMainWindow):
         self.tx_const_symbols = None
         self.rx_symbols_mf = None
         self.rx_symbols_pll = None
+        self.rx_correlation = None
+        self.tx_image = None
+        self.rx_image = None
+
+        # Hack so that we know the expected metadata of images
+        self.image_metadata = None
 
         self.setWindowTitle("Radiolab - TX/RX Dashboard")
         self.resize(1600, 1000)
@@ -73,7 +82,6 @@ class LiveDashboard(QMainWindow):
         layout.setRowStretch(2, 1)
 
         self.status_label = QLabel("Initializing...")
-
         layout.addWidget(self.status_label, 0, 0, 1, 2)
 
         self._create_plots(layout)
@@ -83,6 +91,9 @@ class LiveDashboard(QMainWindow):
         self.timer.start(config.gui.update_rate_ms)
 
     def _create_plots(self, layout: QGridLayout) -> None:
+        """Instantiate plots that can be filled with data"""
+
+        # Tx Constellation Plot
         self.tx_const_plot = pg.PlotWidget(title="TX Constellation")
         self.tx_const_plot.setAspectLocked(True)
         self.tx_const_scatter = pg.ScatterPlotItem(
@@ -91,12 +102,15 @@ class LiveDashboard(QMainWindow):
         self.tx_const_plot.addItem(self.tx_const_scatter)
         layout.addWidget(self.tx_const_plot, 0, 0)
 
+        # Rx Constellation Plots
         self.rx_const_mf_plot = pg.PlotWidget(title="RX Matched filtered data")
         self.rx_const_mf_plot.setAspectLocked(True)
         self.rx_const_mf_scatter = pg.ScatterPlotItem(
             size=5, pen=None, brush=pg.mkBrush(100, 255, 100, 200)
         )
         self.rx_const_mf_plot.addItem(self.rx_const_mf_scatter)
+        self.rx_const_mf_plot.setXRange(-1.2, 1.2, padding=0)
+        self.rx_const_mf_plot.setYRange(-1.2, 1.2, padding=0)
         layout.addWidget(self.rx_const_mf_plot, 0, 1)
 
         self.rx_const_pll_plot = pg.PlotWidget(title="RX Phase locked data")
@@ -105,7 +119,30 @@ class LiveDashboard(QMainWindow):
             size=5, pen=None, brush=pg.mkBrush(100, 255, 100, 200)
         )
         self.rx_const_pll_plot.addItem(self.rx_const_pll_scatter)
+        self.rx_const_pll_plot.setXRange(-1.2, 1.2, padding=0)
+        self.rx_const_pll_plot.setYRange(-1.2, 1.2, padding=0)
         layout.addWidget(self.rx_const_pll_plot, 0, 2)
+
+        # Rx Correlation plot
+        self.rx_correlation_plot = pg.PlotWidget(title="Rx Correlation data")
+        self.rx_correlation_plot.setAspectLocked(True)
+        self.rx_correlation_curve = pg.PlotCurveItem(
+            pen=pg.mkPen(color=(100, 200, 100), width=2)
+        )
+        self.rx_correlation_plot.addItem(self.rx_correlation_curve)
+        layout.addWidget(self.rx_correlation_plot, 1, 0)
+
+        self.tx_image_view = pg.ImageView()
+        self.tx_image_view.ui.roiBtn.hide()
+        self.tx_image_view.ui.menuBtn.hide()
+        self.tx_image_view.setWindowTitle("Transmitted image")
+        layout.addWidget(self.tx_image_view, 2, 0)
+
+        self.rx_image_view = pg.ImageView()
+        self.rx_image_view.ui.roiBtn.hide()
+        self.rx_image_view.ui.menuBtn.hide()
+        self.rx_image_view.setWindowTitle("Received image")
+        layout.addWidget(self.rx_image_view, 2, 1)
 
     def _update_plots(self) -> None:
         """"""
@@ -135,12 +172,25 @@ class LiveDashboard(QMainWindow):
                 y=self.rx_symbols_pll.imag[:500],
             )
 
+        # Update correlation plot
+        if self.rx_correlation is not None:
+            self.rx_correlation_curve.setData(
+                x=np.arange(0, 500, 1),
+                y=self.rx_correlation[:500],
+            )
+
         # Update Tx constellation
         if self.tx_const_symbols is not None:
             self.tx_const_scatter.setData(
                 x=self.tx_const_symbols.real[:500],
                 y=self.tx_const_symbols.imag[:500],
             )
+
+        if self.tx_image is not None:
+            self.tx_image_view.setImage(self.tx_image)
+
+        if self.rx_image is not None:
+            self.rx_image_view.setImage(self.rx_image)
 
     def _process_message(self, msg):
         """Process message from the queue"""
@@ -149,8 +199,46 @@ class LiveDashboard(QMainWindow):
 
         match msg_type:
             case "rx_update":
+                qam = Qam(self.config.phy.modulation_order)
+
+                self.rx_correlation = msg.get("correlation")
                 self.rx_symbols_mf = msg.get("matched_filtered_data")
                 self.rx_symbols_pll = msg.get("phase_locked_data")
 
+                # Decode and generate image
+                # TODO: This should not happen here!
+                if self.image_metadata is not None:
+                    logger.info("DECODING IMAGE")
+                    decoded_data = np.zeros_like(
+                        self.rx_symbols_pll,
+                        shape=(
+                            self.image_metadata["img_width"]
+                            * self.image_metadata["img_height"],
+                        ),
+                        dtype=int,
+                    )
+                    for idx, val in enumerate(self.rx_symbols_pll):
+                        if idx >= (
+                            self.image_metadata["img_width"]
+                            * self.image_metadata["img_height"]
+                        ):
+                            break
+
+                        decoded_data[idx] = qam.demodulate(val)
+
+                    self.rx_image = np.reshape(
+                        decoded_data,
+                        (
+                            self.image_metadata["img_height"],
+                            self.image_metadata["img_width"],
+                        ),
+                    ).T
+
             case "tx_update":
                 self.tx_const_symbols = msg.get("tx_data")
+                metadata = msg.get("metadata")
+                self.tx_image = np.reshape(
+                    msg.get("tx_image"),
+                    (metadata["img_height"], metadata["img_width"]),
+                ).T
+                self.image_metadata = metadata
