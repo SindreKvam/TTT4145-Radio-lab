@@ -135,13 +135,19 @@ def main():
 
     # Transmit and receive one buffer of data
     received_data = transmit_and_receive(sdr, transmit_data=pulse_shaped_data)
-    # fs = int(sdr.sample_rate)
+    fs = int(sdr.sample_rate)
     del sdr
 
     # ---------- END HW ----------
     # ---------- START RX ----------
 
     rx_modem = ModemRx(qam, sps, rrc_coeff)
+
+    Fx = np.fft.fft(received_data, 256)
+    f = np.fft.fftfreq(256, 1 / fs)
+
+    plt.plot(np.fft.fftshift(f) * 1e-6, np.fft.fftshift(20 * np.log10(np.abs(Fx))))
+    plt.xlabel("Frequency (MHz)")
 
     matched_filtered_data = rx_modem.matched_filtering(received_data)
 
@@ -167,15 +173,8 @@ def main():
     # Recover timing
     matched_filtered_data = rx_modem.recover_timing(matched_filtered_data)
 
-    correlation = np.pow(
-        np.abs(
-            np.correlate(
-                matched_filtered_data / np.max(matched_filtered_data),
-                matched_filtered_code,
-                mode="same",
-            )
-        ),
-        2,
+    correlation = rx_modem._correlate_with_codeword(
+        matched_filtered_data, matched_filtered_code
     )
 
     plt.figure()
