@@ -1,7 +1,6 @@
 import argparse
 import logging
 import multiprocessing as mp
-import queue
 from threading import Event
 
 from pipeline.gui_worker import GuiWorker
@@ -21,8 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 def main(**kwargs):
-    rx_queue = queue.Queue(maxsize=10)
-    tx_queue = queue.Queue(maxsize=10)
+    rx_queue = mp.Queue(maxsize=20)
+    tx_queue = mp.Queue(maxsize=18)
     gui_queue = mp.Queue(maxsize=8)
 
     config = Config.default()

@@ -1,9 +1,12 @@
 import logging
-from queue import Empty, Full, Queue
-from threading import Event, Thread
+import time
+from multiprocessing import Event, Process
+from multiprocessing.queues import Empty, Full, Queue
+from threading import Event as ThreadEvent
 
-# from multiprocessing import Event, Process
-# from multiprocessing.queues import Empty, Full, Queue
+# from queue import Empty, Full, Queue
+from threading import Thread
+
 import adi
 
 from radiolab.config.config import RadioConfig
@@ -11,7 +14,7 @@ from radiolab.config.config import RadioConfig
 logger = logging.getLogger(__name__)
 
 
-class HardwareWorker(Thread):
+class HardwareWorker(Process):
     def __init__(
         self,
         tx_queue: Queue,
@@ -55,28 +58,50 @@ class HardwareWorker(Thread):
     def run(self) -> None:
         """"""
 
-        while not self.stop_event.is_set():
-            # start_time = time.perf_counter()
-            rx_data = self.radio.rx()
-            # receive_time = time.perf_counter()
+        self._thread_stop_event = ThreadEvent()
 
-            # if receive_time - start_time < self.config.time_to_fill_buffer:
-            #     logger.warning(
-            #         "RX receive took too much time, packet most likely dropped"
-            #     )
+        rx_thread = Thread(target=self._rx_loop, name=f"{self.name}-RX", daemon=True)
+        tx_thread = Thread(target=self._tx_loop, name=f"{self.name}-TX", daemon=True)
+
+        rx_thread.start()
+        tx_thread.start()
+
+        rx_thread.join()
+        tx_thread.join()
+
+    def _rx_loop(self) -> None:
+        logger.info("Rx loop started")
+
+        while not self._thread_stop_event.is_set():
+            rx_data = self.radio.rx()
+
+            loop_start_time = time.perf_counter()
 
             # Put receive data in the Rx queue
             try:
                 self.rx_queue.put_nowait(rx_data)
             except Full:
                 logger.warning("RX buffer full, dropping package")
-                self.rx_queue.get()
-                self.rx_queue.put_nowait(rx_data)
+                # self.rx_queue.get()
+                # self.rx_queue.put_nowait(rx_data)
 
-            # Transmit whatever is in the Tx queue
+            loop_end_time = time.perf_counter()
+            loop_duration = loop_end_time - loop_start_time
+
+            if loop_duration > self.config.time_to_fill_buffer:
+                logger.warning(
+                    "HardwareWorker Rx loop too slow, "
+                    + f"rx is not continuous {loop_duration * 1e3:.2f} ms "
+                    + f"> {self.config.time_to_fill_buffer * 1e3:.2f} ms."
+                )
+
+    def _tx_loop(self) -> None:
+        logger.info("Tx loop started")
+
+        while not self._thread_stop_event.is_set():
             try:
                 tx_data = self.tx_queue.get_nowait()
                 self.radio.tx(tx_data)
+
             except Empty:
-                # logger.warning("TX buffer empty, missed data transfer")
-                pass
+                continue

@@ -1,10 +1,11 @@
 import logging
 import time
-from queue import Empty, Full, Queue
 
-# from multiprocessing import Event, Process
-from threading import Event, Thread
+# from queue import Empty, Full, Queue
+from multiprocessing import Event, Process
+from multiprocessing.queues import Empty, Full, Queue
 
+# from threading import Event, Thread
 import numpy as np
 from fir_filter import RootRaisedCosine
 from modem import Qam
@@ -23,7 +24,7 @@ def _get_codeword(code_length, M):
     )
 
 
-class RxWorker(Thread):
+class RxWorker(Process):
     def __init__(
         self,
         rx_queue: Queue,
@@ -119,7 +120,7 @@ class RxWorker(Thread):
 
                     start_of_data_index = start_of_data_index[0]
                 except IndexError:
-                    logger.info("No data found, dropping received data")
+                    # logger.info("No data found, dropping received data")
                     continue
 
                 matched_filtered_data = self.phy.remove_codeword(

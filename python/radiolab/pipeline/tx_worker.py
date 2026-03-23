@@ -1,11 +1,12 @@
 import logging
 from dataclasses import dataclass
 from enum import StrEnum
-from queue import Full, Queue
 
-# from multiprocessing import Event, Process
-from threading import Event, Thread
+# from queue import Full, Queue
+from multiprocessing import Event, Process
+from multiprocessing.queues import Full, Queue
 
+# from threading import Event, Thread
 import cv2
 import numpy as np
 from fir_filter import RootRaisedCosine
@@ -33,7 +34,7 @@ class TxJob:
     repeat: int = 1
 
 
-class TxWorker(Thread):
+class TxWorker(Process):
     def __init__(
         self,
         tx_queue: Queue,
@@ -148,4 +149,4 @@ class TxWorker(Thread):
             try:
                 self.tx_queue.put_nowait(data)
             except Full:
-                logger.warning("Tx Queue is not emptied fast enough")
+                logger.warning("Tx Queue Full!")
