@@ -40,7 +40,7 @@ class ModemRx:
         return signal.find_peaks(_correlation, height=threshold)[0]
 
     def remove_codeword(self, samples: np.ndarray, peak_index: int, code_length: int):
-        return samples[peak_index + code_length // 2 + 1 :]
+        return samples[peak_index + code_length // 2 :]
 
     def coarse_frequency_offset(self, samples: np.ndarray):
         raise NotImplementedError

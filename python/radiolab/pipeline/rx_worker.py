@@ -126,7 +126,7 @@ class RxWorker(Process):
                 matched_filtered_data = self.phy.remove_codeword(
                     matched_filtered_data,
                     start_of_data_index,
-                    int(self.config.codeword_length),
+                    len(self.code),
                 )
                 remove_codeword_time = time.perf_counter_ns()
 
