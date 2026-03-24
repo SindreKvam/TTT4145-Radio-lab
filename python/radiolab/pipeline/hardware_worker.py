@@ -81,7 +81,7 @@ class HardwareWorker(Process):
             try:
                 self.rx_queue.put_nowait(rx_data)
             except Full:
-                logger.warning("RX buffer full, dropping package")
+                logger.error("RX buffer full, dropping package")
                 # self.rx_queue.get()
                 # self.rx_queue.put_nowait(rx_data)
 

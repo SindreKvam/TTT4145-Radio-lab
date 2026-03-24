@@ -7,13 +7,13 @@ from multiprocessing import Event, Process
 from multiprocessing.queues import Full, Queue
 
 # from threading import Event, Thread
-import cv2
 import numpy as np
 from fir_filter import RootRaisedCosine
 from modem import Qam
 
-from radiolab.app.sources import array_image_to_m_bit, image_path, image_to_m_bit
+from radiolab.app.sources import CameraSource, image_path, image_to_m_bit
 from radiolab.config.config import PhyConfig
+from radiolab.link.framer import Framer
 from radiolab.phy.tx import ModemTx
 
 logger = logging.getLogger(__name__)
@@ -55,7 +55,8 @@ class TxWorker(Process):
         self.stop_event = stop_event
         self.idle_sleep_s = idle_sleep_s
 
-        self.camera = cv2.VideoCapture(0)
+        self.camera = CameraSource()
+        self.framer = Framer()
 
         try:
             rrc = RootRaisedCosine(
@@ -90,15 +91,16 @@ class TxWorker(Process):
     def _generate_camera_data_job(self, image_scale=0.2) -> TxJob:
         """Connect to camera and take image as quickly as possible"""
 
-        job = TxJob(payload=None, tag=Tags.CAMERA)
-
-        ret, img = self.camera.read()
-        rgb_image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        m_bit_image, img_width, img_height = array_image_to_m_bit(
-            rgb_image, self.phy.M, scale=image_scale
+        img, img_width, img_height = self.camera.read(
+            self.phy.M, image_scale=image_scale
         )
-        job.payload = np.ravel(m_bit_image).astype(int)
-        job.metadata = {"img_width": img_width, "img_height": img_height}
+        payload = self.framer.flatten_image(img)
+
+        job = TxJob(
+            payload=payload,
+            tag=Tags.CAMERA,
+            metadata={"img_width": img_width, "img_height": img_height},
+        )
 
         return job
 

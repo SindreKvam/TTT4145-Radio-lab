@@ -4,13 +4,6 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-
-class Source(ABC):
-    @abstractmethod
-    def read(self) -> np.ndarray:
-        pass
-
-
 image_path = Path(__file__).parent / "IMG_4399.JPG"
 
 
@@ -32,6 +25,12 @@ def array_image_to_m_bit(img: np.ndarray, M: int = 4, scale=1.0):
     return resized // (256 / M), width, height
 
 
+class Source(ABC):
+    @abstractmethod
+    def read(self) -> np.ndarray:
+        pass
+
+
 class ImageSource(Source):
     def __init__(self, image_path: str):
         with open(image_path, "rb") as f:
@@ -39,3 +38,18 @@ class ImageSource(Source):
 
     def read(self):
         return self.data
+
+
+class CameraSource(Source):
+    def __init__(self) -> None:
+        self.camera = cv2.VideoCapture(0)
+
+    def read(
+        self, num_bits: int = 4, image_scale: float = 0.2
+    ) -> tuple[np.ndarray, int, int]:
+        """Take image with web-camera and return a scaled image"""
+
+        ret, img = self.camera.read()
+        rgb_image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+        return array_image_to_m_bit(rgb_image, num_bits, scale=image_scale)
