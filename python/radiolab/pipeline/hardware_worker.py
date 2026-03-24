@@ -100,7 +100,7 @@ class HardwareWorker(Process):
 
         while not self._thread_stop_event.is_set():
             try:
-                tx_data = self.tx_queue.get_nowait()
+                tx_data = self.tx_queue.get(timeout=0.001)
                 self.radio.tx(tx_data)
 
             except Empty:
