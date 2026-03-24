@@ -80,23 +80,24 @@ class TxWorker(Process):
         job = TxJob(payload=None, tag=Tags.IMAGE)
 
         m_bit_image, img_width, img_height = image_to_m_bit(
-            image_path, self.phy.M, scale=0.02
+            image_path, self.phy.M, scale=0.1
         )
         job.payload = m_bit_image.flatten().astype(int)
         job.metadata = {"img_width": img_width, "img_height": img_height}
 
         return job
 
-    def _generate_camera_data_job(self) -> TxJob:
+    def _generate_camera_data_job(self, image_scale=0.2) -> TxJob:
         """Connect to camera and take image as quickly as possible"""
 
         job = TxJob(payload=None, tag=Tags.CAMERA)
 
         ret, img = self.camera.read()
+        rgb_image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         m_bit_image, img_width, img_height = array_image_to_m_bit(
-            img[:, :, 0], self.phy.M, scale=0.2
+            rgb_image, self.phy.M, scale=image_scale
         )
-        job.payload = m_bit_image.flatten().astype(int)
+        job.payload = np.ravel(m_bit_image).astype(int)
         job.metadata = {"img_width": img_width, "img_height": img_height}
 
         return job
@@ -132,21 +133,33 @@ class TxWorker(Process):
             data = self.phy.upsample(data)
             data = self.phy.pulse_shape(data)
 
-            try:
-                self.gui_queue.put_nowait(
-                    {
-                        "type": "tx_update",
-                        "tx_data": data,
-                        "metadata": job.metadata,
-                        "tx_image": img,
-                    }
-                )
-            except Full:
-                logger.warning("GUI Queue full, dropping Tx data frame")
-
             data *= 2**14
 
             try:
                 self.tx_queue.put_nowait(data)
             except Full:
                 logger.warning("Tx Queue Full!")
+                continue
+
+            try:
+                self.gui_queue.put_nowait(
+                    {
+                        "type": "tx_update",
+                        "tx_data": data,
+                        "metadata": job.metadata,
+                        # TODO: Move re-structuring of image to app / link layer
+                        "tx_image": np.transpose(
+                            np.reshape(
+                                img,
+                                (
+                                    job.metadata["img_height"],
+                                    job.metadata["img_width"],
+                                    3,
+                                ),
+                            ),
+                            (1, 0, 2),
+                        ),
+                    }
+                )
+            except Full:
+                logger.warning("GUI Queue full, dropping Tx data frame")

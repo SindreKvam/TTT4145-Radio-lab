@@ -213,7 +213,8 @@ class LiveDashboard(QMainWindow):
                         self.rx_symbols_pll,
                         shape=(
                             self.image_metadata["img_width"]
-                            * self.image_metadata["img_height"],
+                            * self.image_metadata["img_height"]
+                            * 3,
                         ),
                         dtype=int,
                     )
@@ -221,24 +222,26 @@ class LiveDashboard(QMainWindow):
                         if idx >= (
                             self.image_metadata["img_width"]
                             * self.image_metadata["img_height"]
+                            * 3
                         ):
                             break
 
                         decoded_data[idx] = qam.demodulate(val)
 
-                    self.rx_image = np.reshape(
-                        decoded_data,
-                        (
-                            self.image_metadata["img_height"],
-                            self.image_metadata["img_width"],
+                    self.rx_image = np.transpose(
+                        np.reshape(
+                            decoded_data,
+                            (
+                                self.image_metadata["img_height"],
+                                self.image_metadata["img_width"],
+                                3,
+                            ),
                         ),
-                    ).T
+                        (1, 0, 2),
+                    )
 
             case "tx_update":
                 self.tx_const_symbols = msg.get("tx_data")
                 metadata = msg.get("metadata")
-                self.tx_image = np.reshape(
-                    msg.get("tx_image"),
-                    (metadata["img_height"], metadata["img_width"]),
-                ).T
+                self.tx_image = msg.get("tx_image")
                 self.image_metadata = metadata
