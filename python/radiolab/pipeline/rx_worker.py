@@ -63,9 +63,7 @@ class RxWorker(Process):
             code = _get_codeword(
                 self.config.codeword_length, self.config.modulation_order
             )
-            modulated_code = np.zeros_like(code, dtype=complex)
-            for idx, val in enumerate(code):
-                modulated_code[idx] = qam.modulate(val)
+            modulated_code = np.asarray(qam.modulate_array(code), dtype=complex)
 
             upsampled_code = np.zeros_like(
                 modulated_code,

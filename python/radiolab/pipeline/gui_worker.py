@@ -209,24 +209,15 @@ class LiveDashboard(QMainWindow):
                 # TODO: This should not happen here!
                 if self.image_metadata is not None:
                     logger.info("DECODING IMAGE")
-                    decoded_data = np.zeros_like(
-                        self.rx_symbols_pll,
-                        shape=(
-                            self.image_metadata["img_width"]
-                            * self.image_metadata["img_height"]
-                            * 3,
-                        ),
+                    expected_len = (
+                        self.image_metadata["img_width"]
+                        * self.image_metadata["img_height"]
+                        * 3
+                    )
+                    decoded_data = np.asarray(
+                        qam.demodulate_array(self.rx_symbols_pll[:expected_len]),
                         dtype=int,
                     )
-                    for idx, val in enumerate(self.rx_symbols_pll):
-                        if idx >= (
-                            self.image_metadata["img_width"]
-                            * self.image_metadata["img_height"]
-                            * 3
-                        ):
-                            break
-
-                        decoded_data[idx] = qam.demodulate(val)
 
                     self.rx_image = np.transpose(
                         np.reshape(

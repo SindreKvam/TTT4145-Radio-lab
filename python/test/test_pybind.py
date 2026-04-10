@@ -29,6 +29,19 @@ def test_modem(num_symbols):
     plt.show()
 
 
+@pytest.mark.parametrize("num_symbols", [4, 16, 64, 256])
+def test_modem_array_roundtrip(num_symbols):
+    qam = modem.Qam(num_symbols)
+    data = np.random.randint(0, num_symbols, size=(512,), dtype=np.uint16)
+
+    modulated = np.asarray(qam.modulate_array(data))
+    demodulated = np.asarray(qam.demodulate_array(modulated))
+
+    assert modulated.shape == data.shape
+    assert demodulated.shape == data.shape
+    assert np.array_equal(demodulated, data)
+
+
 @pytest.mark.parametrize("beta", [0.2, 0.707])
 @pytest.mark.parametrize("span", [4, 8, 10])
 @pytest.mark.parametrize("sps", [4, 8, 16])

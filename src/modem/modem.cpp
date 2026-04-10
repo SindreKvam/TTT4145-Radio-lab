@@ -159,8 +159,9 @@ std::ostream &operator<<(std::ostream &os, Modem &modem) {
 #ifdef PYBIND11
 
 #include <pybind11/complex.h>
-#include <pybind11/stl.h>
+#include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 
 namespace py = pybind11;
 
@@ -172,9 +173,57 @@ PYBIND11_MODULE(modem, m, py::mod_gil_not_used()) {
         .def(py::init<const int &>())
         .def("modulate", &QAM::modulate,
              "Modulate an integer to a symbol, the symbol is complex")
+        .def(
+            "modulate_array",
+            [](QAM &qam,
+               py::array_t<uint16_t, py::array::c_style | py::array::forcecast>
+                   symbols) {
+                py::buffer_info in_info = symbols.request();
+                std::vector<py::ssize_t> shape(in_info.shape.begin(),
+                                               in_info.shape.end());
+                py::array_t<std::complex<float>> out(shape);
+                py::buffer_info out_info = out.request();
+
+                auto *in_ptr = static_cast<uint16_t *>(in_info.ptr);
+                auto *out_ptr =
+                    static_cast<std::complex<float> *>(out_info.ptr);
+
+                for (py::ssize_t i = 0; i < in_info.size; i++) {
+                    if (in_ptr[i] >= qam.num_of_symbols) {
+                        throw py::value_error(
+                            "Symbol value out of range for this QAM size");
+                    }
+                    out_ptr[i] = qam.modulate(in_ptr[i]);
+                }
+
+                return out;
+            },
+            "Modulate an integer numpy array to a complex numpy array")
         .def("demodulate", &QAM::demodulate,
              "Demodulates a complex symbol to a integer value")
-        .def("get_lookup_table", &QAM::get_lookup_table, "Returns the lookup table");
+        .def(
+            "demodulate_array",
+            [](QAM &qam, py::array_t<std::complex<float>,
+                                     py::array::c_style | py::array::forcecast>
+                             symbols) {
+                py::buffer_info in_info = symbols.request();
+                std::vector<py::ssize_t> shape(in_info.shape.begin(),
+                                               in_info.shape.end());
+                py::array_t<uint16_t> out(shape);
+                py::buffer_info out_info = out.request();
+
+                auto *in_ptr = static_cast<std::complex<float> *>(in_info.ptr);
+                auto *out_ptr = static_cast<uint16_t *>(out_info.ptr);
+
+                for (py::ssize_t i = 0; i < in_info.size; i++) {
+                    out_ptr[i] = qam.demodulate(in_ptr[i]);
+                }
+
+                return out;
+            },
+            "Demodulate a complex numpy array to an integer numpy array")
+        .def("get_lookup_table", &QAM::get_lookup_table,
+             "Returns the lookup table");
 }
 
 #endif // PYBIND11

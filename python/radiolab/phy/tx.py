@@ -20,11 +20,7 @@ class ModemTx:
 
     def modulate_payload(self, payload: np.ndarray):
         """Modulate payload"""
-
-        _modulated = np.zeros_like(payload, dtype=complex)
-        for idx, val in enumerate(payload):
-            _modulated[idx] = self.qam.modulate(val)
-        return _modulated
+        return np.asarray(self.qam.modulate_array(payload), dtype=complex)
 
     def upsample(self, data: np.ndarray):
         """Upsample data by "sps" times."""
