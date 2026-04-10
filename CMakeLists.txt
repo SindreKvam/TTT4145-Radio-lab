@@ -21,13 +21,19 @@ if(BUILD_PYTHON_BINDINGS)
         src/core/fir.cpp
         src/core/root_raised_cosine.cpp
     )
+    pybind11_add_module(pll
+        src/pll/pll.cpp
+    )
     target_compile_definitions(modem PRIVATE PYBIND11=1)
     target_compile_definitions(fir_filter PRIVATE PYBIND11=1)
+    target_compile_definitions(pll PRIVATE PYBIND11=1)
     target_include_directories(modem PRIVATE include src)
     target_include_directories(fir_filter PRIVATE include src)
+    target_include_directories(pll PRIVATE include src)
 
     install(TARGETS modem LIBRARY DESTINATION . COMPONENT python)
     install(TARGETS fir_filter LIBRARY DESTINATION . COMPONENT python)
+    install(TARGETS pll LIBRARY DESTINATION . COMPONENT python)
 
 # ---------- Native build (cmake ..) ----------
 else()

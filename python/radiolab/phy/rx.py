@@ -1,5 +1,6 @@
 import numpy as np
 from modem import Qam
+from pll import Pll
 from scipy import signal
 
 
@@ -9,6 +10,11 @@ class ModemRx:
         self.sps = sps
         self.filter_coeff = filter_coeff
         self.filter_state = signal.lfiltic(self.filter_coeff, 1, 0)
+        self.last_coarse_cfo_omega = 0.0
+        self.k_p = 0.0222
+        self.k_i = 0.00024
+        self.qam_lut = np.asarray(self.qam.get_lookup_table(), dtype=np.complex64)
+        self.pll = Pll(self.k_p, self.k_i)
 
     def matched_filtering(self, samples: np.ndarray):
         """Perform matched filtering of data"""
@@ -55,38 +61,7 @@ class ModemRx:
 
     def phase_locked_loop(self, samples: np.ndarray, pll_preamble: np.ndarray = None):
         """"""
-        k_p = 0.0222
-        k_i = 0.00024
-
-        e = np.zeros(len(samples))
-        theta = np.zeros(len(samples))
-        phase_locked_data = np.zeros_like(samples)
-
-        if pll_preamble is not None:
-            pll_preamble_length = len(pll_preamble)
-        else:
-            pll_preamble_length = 0
-
-        self.theta = self.integrator = 0
-
-        # Phase locked loop
-        # TODO: implement this in Cpp instead
-        for i, x in enumerate(samples):
-            x *= np.exp(-1j * self.theta)
-            phase_locked_data[i] = x
-
-            # Phase detector
-            if i < pll_preamble_length:
-                closest_symbol = pll_preamble[i]
-            else:
-                closest_symbol = self.qam.modulate(self.qam.demodulate(x))
-
-            e[i] = np.imag(x * np.conj(closest_symbol))
-            # e[i] = np.angle(x * np.conj(closest_symbol))
-
-            # Loop filter
-            self.integrator = self.integrator + k_i * e[i]
-            self.theta += self.integrator + k_p * e[i]
-            theta[i] = self.theta
-
-        return phase_locked_data
+        phase_locked_data = self.pll.phase_locked_loop_array(
+            samples, self.qam_lut, pll_preamble
+        )
+        return np.asarray(phase_locked_data, dtype=samples.dtype)
