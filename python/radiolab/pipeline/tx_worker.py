@@ -57,6 +57,7 @@ class TxWorker(Process):
 
         self.camera = CameraSource()
         self.framer = Framer()
+        self.frame_counter = 0
 
         try:
             rrc = RootRaisedCosine(
@@ -84,7 +85,7 @@ class TxWorker(Process):
             image_path, self.phy.M, scale=0.1
         )
         job.payload = m_bit_image.flatten().astype(int)
-        job.metadata = {"img_width": img_width, "img_height": img_height}
+        job.metadata = {"img_width": img_width, "img_height": img_height, "channels": 1}
 
         return job
 
@@ -99,7 +100,7 @@ class TxWorker(Process):
         job = TxJob(
             payload=payload,
             tag=Tags.CAMERA,
-            metadata={"img_width": img_width, "img_height": img_height},
+            metadata={"img_width": img_width, "img_height": img_height, "channels": 3},
         )
 
         return job
@@ -126,6 +127,14 @@ class TxWorker(Process):
         """Do the actual work of transmitting data"""
         for i in range(job.repeat):
             data = img = job.payload
+
+            data = self.framer.pack_frame(
+                data,
+                metadata=job.metadata,
+                modulation_order=self.phy.M,
+                frame_counter=self.frame_counter,
+            )
+            self.frame_counter = (self.frame_counter + 1) & 0xFFFFFFFF
 
             data = self.phy.modulate_payload(data)
             data = self.phy.add_pll_preamble(
@@ -156,7 +165,7 @@ class TxWorker(Process):
                                 (
                                     job.metadata["img_height"],
                                     job.metadata["img_width"],
-                                    3,
+                                    job.metadata.get("channels", 3),
                                 ),
                             ),
                             (1, 0, 2),

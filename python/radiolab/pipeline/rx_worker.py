@@ -11,6 +11,7 @@ from fir_filter import RootRaisedCosine
 from modem import Qam
 
 from radiolab.config.config import PhyConfig
+from radiolab.link.framer import Framer
 from radiolab.phy.rx import ModemRx
 from radiolab.phy.tx import NASA_CODEWORDS, int_to_m_bit_chunks
 
@@ -44,6 +45,7 @@ class RxWorker(Process):
         self.config = config
         self.stop_event = stop_event
         self.max_timeout = max_timeout
+        self.framer = Framer()
 
         try:
             rrc = RootRaisedCosine(
@@ -100,6 +102,11 @@ class RxWorker(Process):
                 start_time = time.perf_counter_ns()
                 matched_filtered_data = self.phy.matched_filtering(rx_data)
                 matched_filter_time = time.perf_counter_ns()
+                # matched_filtered_data = self.phy.coarse_frequency_offset(
+                #     matched_filtered_data
+                # )
+                coarse_frequency_time = time.perf_counter_ns()
+
                 matched_filtered_data = self.phy.recover_timing(matched_filtered_data)
                 timing_recovery_time = time.perf_counter_ns()
 
@@ -141,24 +148,39 @@ class RxWorker(Process):
                 )
                 phase_locked_loop_time = time.perf_counter_ns()
 
-                # Decode
-                # decoded_data = np.zeros_like(phase_locked_data, dtype=int)
-                # for idx, val in enumerate(phase_locked_data):
-                #     # if idx >= :
-                #     decoded_data[idx] = self.phy.qam.demodulate(val)
+                demodulated_symbols = np.asarray(
+                    self.phy.qam.demodulate_array(
+                        phase_locked_data[self.config.pll_preamble_length :]
+                    ),
+                    dtype=int,
+                )
+                demodulate_time = time.perf_counter_ns()
+                metadata, framed_payload = self.framer.unpack_frame(
+                    demodulated_symbols,
+                    modulation_order=self.config.modulation_order,
+                )
+                if metadata is None:
+                    logger.warning(
+                        "Failed to extract RX metadata header; dropping frame "
+                        "(likely too many bit errors)"
+                    )
+                    continue
 
                 logger.info(
-                    f"Times: {(matched_filter_time - start_time) * 10e-6} ms, "
-                    + f"{(timing_recovery_time - matched_filter_time) * 10e-6} ms, "
-                    + f"{(correlation_time - timing_recovery_time) * 10e-6} ms, "
-                    + f"{(detect_codeword_time - correlation_time) * 10e-6} ms, "
-                    + f"{(remove_codeword_time - detect_codeword_time) * 10e-6} ms, "
-                    + f"{(agc_time - timing_recovery_time) * 10e-6} ms, "
-                    + f"{(phase_locked_loop_time - agc_time) * 10e-6} ms"
+                    f"Times: Matched filtering: {(matched_filter_time - start_time) * 10e-6:.3f} ms, "
+                    + f"CFO: {(coarse_frequency_time - matched_filter_time) * 10e-6:.3f} ms, "
+                    + f"TED: {(timing_recovery_time - coarse_frequency_time) * 10e-6:.3f} ms, "
+                    + f"CORR: {(correlation_time - timing_recovery_time) * 10e-6:.3f} ms, "
+                    + f"CODE: {(detect_codeword_time - correlation_time) * 10e-6:.3f} ms, "
+                    + f"RM CODE: {(remove_codeword_time - detect_codeword_time) * 10e-6:.3f} ms, "
+                    + f"AGC: {(agc_time - remove_codeword_time) * 10e-6:.3f} ms, "
+                    + f"PLL: {(phase_locked_loop_time - agc_time) * 10e-6:.3f} ms, "
+                    + f"DEMOD: {(demodulate_time - phase_locked_loop_time) * 10e-6:.3f} ms"
                 )
 
             except Exception as exc:
                 logger.exception(f"Failed while processing Rx data: {exc}")
+                continue
 
             try:
                 self.gui_queue.put_nowait(
@@ -171,6 +193,8 @@ class RxWorker(Process):
                         "phase_locked_data": phase_locked_data[
                             self.config.pll_preamble_length :
                         ],
+                        "rx_metadata": metadata,
+                        "rx_payload": framed_payload,
                         # "decoded_data": decoded_data,
                     }
                 )

@@ -9,7 +9,6 @@ import numpy as np
 
 # from threading import Event, Thread
 import pyqtgraph as pg
-from modem import Qam
 from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QApplication, QGridLayout, QLabel, QMainWindow, QWidget
 
@@ -63,9 +62,7 @@ class LiveDashboard(QMainWindow):
         self.rx_correlation = None
         self.tx_image = None
         self.rx_image = None
-
-        # Hack so that we know the expected metadata of images
-        self.image_metadata = None
+        self.rx_metadata = None
 
         self.setWindowTitle("Radiolab - TX/RX Dashboard")
         self.resize(1600, 1000)
@@ -199,33 +196,30 @@ class LiveDashboard(QMainWindow):
 
         match msg_type:
             case "rx_update":
-                qam = Qam(self.config.phy.modulation_order)
-
                 self.rx_correlation = msg.get("correlation")
                 self.rx_symbols_mf = msg.get("matched_filtered_data")
                 self.rx_symbols_pll = msg.get("phase_locked_data")
+                self.rx_metadata = msg.get("rx_metadata")
+                rx_payload = msg.get("rx_payload")
 
                 # Decode and generate image
                 # TODO: This should not happen here!
-                if self.image_metadata is not None:
+                if self.rx_metadata is not None:
                     logger.info("DECODING IMAGE")
                     expected_len = (
-                        self.image_metadata["img_width"]
-                        * self.image_metadata["img_height"]
-                        * 3
+                        self.rx_metadata["img_width"]
+                        * self.rx_metadata["img_height"]
+                        * self.rx_metadata.get("channels", 3)
                     )
-                    decoded_data = np.asarray(
-                        qam.demodulate_array(self.rx_symbols_pll[:expected_len]),
-                        dtype=int,
-                    )
+                    decoded_data = np.asarray(rx_payload[:expected_len], dtype=int)
 
                     self.rx_image = np.transpose(
                         np.reshape(
                             decoded_data,
                             (
-                                self.image_metadata["img_height"],
-                                self.image_metadata["img_width"],
-                                3,
+                                self.rx_metadata["img_height"],
+                                self.rx_metadata["img_width"],
+                                self.rx_metadata.get("channels", 3),
                             ),
                         ),
                         (1, 0, 2),
@@ -233,6 +227,4 @@ class LiveDashboard(QMainWindow):
 
             case "tx_update":
                 self.tx_const_symbols = msg.get("tx_data")
-                metadata = msg.get("metadata")
                 self.tx_image = msg.get("tx_image")
-                self.image_metadata = metadata
