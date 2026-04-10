@@ -7,8 +7,9 @@ import adi
 import fir_filter
 import modem
 import numpy as np
-from app.sources import image_path, image_to_m_bit
-from radio import connect_and_configure_pluto
+
+from radiolab.app.sources import image_path, image_to_m_bit
+from radiolab.radio import connect_and_configure_pluto
 
 
 def int_to_m_bit_chunks(number, total_bits, chunk_size) -> np.ndarray:
