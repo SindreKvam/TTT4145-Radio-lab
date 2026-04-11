@@ -105,7 +105,14 @@ class ModemRx:
         raise NotImplementedError
 
     def recover_timing(self, samples: np.ndarray):
-        offset = np.argmax(np.abs(samples[: self.sps]))
+        offset = 0
+        highest_val = 0
+        for _offset in range(self.sps):
+            val = np.sum(np.abs(samples[_offset :: self.sps]))
+            if val > highest_val:
+                highest_val = val
+                offset = _offset
+
         return samples[offset :: self.sps]
 
     def automatic_gain_control(self, samples: np.ndarray):
