@@ -1,13 +1,10 @@
 import logging
 import time
-
-# from queue import Empty, Full, Queue
 from multiprocessing import Event, Process
 from multiprocessing.queues import Empty, Full, Queue
 
-# from threading import Event, Thread
 import numpy as np
-from fir_filter import RootRaisedCosine
+from commpy.filters import rrcosfilter
 from modem import Qam
 
 from radiolab.config.config import PhyConfig
@@ -47,14 +44,14 @@ class RxWorker(Process):
         self.max_timeout = max_timeout
         self.framer = Framer()
 
-        try:
-            rrc = RootRaisedCosine(
-                self.config.rrc_beta,
-                self.config.rrc_span,
-                self.config.samples_per_symbol,
-            )
-            rrc_coeff = np.array(rrc.get_coefficients())
+        rrc, rrc_coeff = rrcosfilter(
+            self.config.rrc_span * self.config.samples_per_symbol + 1,
+            alpha=self.config.rrc_beta,
+            Ts=self.config.samples_per_symbol,
+            Fs=1.0,
+        )
 
+        try:
             qam = Qam(self.config.modulation_order)
         except Exception as exc:
             logger.exception(f"Failed to implement Cpp methods: {exc}")

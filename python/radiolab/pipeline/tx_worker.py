@@ -8,7 +8,7 @@ from multiprocessing.queues import Full, Queue
 
 # from threading import Event, Thread
 import numpy as np
-from fir_filter import RootRaisedCosine
+from commpy.filters import rrcosfilter
 from modem import Qam
 
 from radiolab.app.sources import CameraSource, image_path, image_to_m_bit
@@ -59,13 +59,14 @@ class TxWorker(Process):
         self.framer = Framer()
         self.frame_counter = 0
 
-        try:
-            rrc = RootRaisedCosine(
-                self.config.rrc_beta,
-                self.config.rrc_span,
-                self.config.samples_per_symbol,
-            )
+        rrc, rrc_coeff = rrcosfilter(
+            self.config.rrc_span * self.config.samples_per_symbol + 1,
+            alpha=self.config.rrc_beta,
+            Ts=self.config.samples_per_symbol,
+            Fs=1.0,
+        )
 
+        try:
             qam = Qam(self.config.modulation_order)
         except Exception as exc:
             logger.exception(f"Failed to implement Cpp methods: {exc}")
@@ -73,7 +74,7 @@ class TxWorker(Process):
         self.phy = ModemTx(
             qam,
             self.config.samples_per_symbol,
-            np.array(rrc.get_coefficients()),
+            rrc_coeff,
         )
 
     def _generate_image_data_job(self) -> TxJob:

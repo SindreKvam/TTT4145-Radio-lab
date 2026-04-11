@@ -14,6 +14,7 @@ dependencies = [
     "opencv-python-headless==4.13.0.92",
     "pyqt5==5.15.11",
     "pyqtgraph==0.14.0",
+    "scikit-commpy==0.8.0",
 ]
 
 [tool.scikit-build]
