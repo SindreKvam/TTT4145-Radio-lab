@@ -135,7 +135,6 @@ class TxWorker(Process):
                 modulation_order=self.phy.M,
                 frame_counter=self.frame_counter,
             )
-            self.frame_counter = (self.frame_counter + 1) & 0xFFFFFFFF
 
             data = self.phy.modulate_payload(data)
             data = self.phy.add_pll_preamble(
@@ -175,3 +174,7 @@ class TxWorker(Process):
                 )
             except Full:
                 logger.warning("GUI Queue full, dropping Tx data frame")
+                continue
+
+            # Update frame counter only if frame actually was transmitted
+            self.frame_counter = (self.frame_counter + 1) & 0xFFFFFFFF
