@@ -1,13 +1,39 @@
 import modem
 import numpy as np
 
-from radiolab.tx import int_to_m_bit_chunks
-
 NASA_CODEWORDS: dict[int, int] = {
     32: 0x89445BC1,
     36: 0xC6859AE80,
     64: 0xEC10845E8B3CB0AC,
 }
+
+
+def int_to_m_bit_chunks(number, total_bits, chunk_size) -> np.ndarray:
+    """
+    Converts an integer to a list of m-bit integer chunks.
+
+    Args:
+        number (int): The input integer.
+        total_bits (int): The total number of bits for the integer (N).
+        chunk_size (int): The size of each chunk in bits (M).
+
+    Returns:
+        list: A list of integers, each representing an m-bit chunk.
+    """
+    if total_bits % chunk_size != 0:
+        raise ValueError("Total bits must be an exact multiple of the chunk size.")
+
+    # Format the number into a zero-padded binary string of N bits
+    binary_string = format(number, f"0{total_bits}b")
+
+    # Split the binary string into chunks of M bits
+    chunks = []
+    for i in range(0, total_bits, chunk_size):
+        chunk_str = binary_string[i : i + chunk_size]
+        # Convert each binary chunk string back to an integer
+        chunks.append(int(chunk_str, 2))
+
+    return np.array(chunks, dtype=int)
 
 
 class ModemTx:

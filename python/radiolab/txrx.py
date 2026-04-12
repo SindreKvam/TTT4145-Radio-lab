@@ -12,7 +12,6 @@ from app.sources import array_image_to_m_bit, image_path, image_to_m_bit
 from phy.rx import ModemRx
 from phy.tx import ModemTx
 from radio import connect_and_configure_pluto
-from tx import get_pll_preamble
 
 
 @dataclass
@@ -20,6 +19,14 @@ class state:
     theta = 0  # Phase estimate
     integrator = 0  # integrator state
     agc = 1
+
+
+def get_pll_preamble(pll_preamble_length: int = 1200):
+    pll_sync_preamble = np.array(
+        [1.0 + 1.0j, -1.0 + 1.0j, -1.0 - 1.0j, 1.0 - 1.0j] * (pll_preamble_length // 4)
+    )
+
+    return pll_sync_preamble
 
 
 def transmit_and_receive(sdr: adi.Pluto, transmit_data: np.ndarray):
