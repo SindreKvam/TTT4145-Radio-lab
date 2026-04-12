@@ -163,6 +163,7 @@ class RxWorker(Process):
                     "total": None,
                 }
 
+                # Matched filtering
                 matched_filtered_data = self.phy.matched_filtering(rx_data)
                 matched_filter_time = time.perf_counter_ns()
                 times_ms["matched_filter"] = (matched_filter_time - start_time) * 10e-6
@@ -171,6 +172,7 @@ class RxWorker(Process):
                 # )
                 coarse_frequency_time = time.perf_counter_ns()
 
+                # Coarse correlation (Is there any chance data is present)
                 coarse_correlation = self.phy.correlate_with_codeword(
                     matched_filtered_data, self.code_os
                 )
@@ -207,10 +209,12 @@ class RxWorker(Process):
                 ted_start = max(0, coarse_start_index - ted_margin)
                 ted_input = matched_filtered_data[ted_start:]
 
+                # Do timing error detection (downsampling)
                 matched_filtered_data = self.phy.recover_timing(ted_input)
                 timing_recovery_time = time.perf_counter_ns()
                 times_ms["ted"] = (timing_recovery_time - coarse_detect_time) * 10e-6
 
+                # Fine correlation to do symbol sync
                 correlation = self.phy.correlate_with_codeword(
                     matched_filtered_data, self.code_sym
                 )
@@ -244,6 +248,7 @@ class RxWorker(Process):
                     len(matched_filtered_data),
                 )
 
+                # Remove codeword so we should be left with preamble, header and payload
                 matched_filtered_data = self.phy.remove_codeword_from_start(
                     matched_filtered_data,
                     start_of_data_index,
@@ -254,11 +259,26 @@ class RxWorker(Process):
                     remove_codeword_time - detect_codeword_time
                 ) * 10e-6
 
-                # Should be AGC
-                matched_filtered_data /= np.max(matched_filtered_data)
+                # Do automatic gain control
+                matched_filtered_data, agc_gain = self.phy.automatic_gain_control(
+                    matched_filtered_data,
+                    preamble_length=self.config.pll_preamble_length,
+                    target_magnitude=np.sqrt(2.0),
+                )
+                if matched_filtered_data is None:
+                    self._emit_rx_debug(
+                        seq=seq,
+                        stage="agc",
+                        ok=False,
+                        reason="agc_invalid_gain",
+                        times_ms=times_ms,
+                    )
+                    continue
                 agc_time = time.perf_counter_ns()
                 times_ms["agc"] = (agc_time - remove_codeword_time) * 10e-6
 
+                # Perform phase locked data and use the fact that we know
+                # What the preamble should look like
                 _preamble = np.array(
                     [1.0 + 1.0j, -1.0 + 1.0j, -1.0 - 1.0j, 1.0 - 1.0j]
                     * (self.config.pll_preamble_length // 4)
@@ -269,6 +289,7 @@ class RxWorker(Process):
                 phase_locked_loop_time = time.perf_counter_ns()
                 times_ms["pll"] = (phase_locked_loop_time - agc_time) * 10e-6
 
+                # Demodulate data
                 demodulated_symbols = np.asarray(
                     self.phy.qam.demodulate_array(
                         phase_locked_data[self.config.pll_preamble_length :]
@@ -277,6 +298,8 @@ class RxWorker(Process):
                 )
                 demodulate_time = time.perf_counter_ns()
                 times_ms["demod"] = (demodulate_time - phase_locked_loop_time) * 10e-6
+
+                # Unpack frame and separate metadata and payload
                 metadata, framed_payload = self.framer.unpack_frame(
                     demodulated_symbols,
                     modulation_order=self.config.modulation_order,

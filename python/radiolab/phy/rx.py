@@ -115,9 +115,34 @@ class ModemRx:
 
         return samples[offset :: self.sps]
 
-    def automatic_gain_control(self, samples: np.ndarray):
-        """"""
-        raise NotImplementedError
+    def automatic_gain_control(
+        self,
+        samples: np.ndarray,
+        preamble_length: int,
+        target_magnitude: float = np.sqrt(2.0),
+    ) -> tuple[np.ndarray, float] | tuple[None, None]:
+        """Normalize signal gain using only the known preamble segment.
+
+        Returns a tuple of (scaled_samples, gain). If gain estimation fails,
+        returns (None, None).
+        """
+
+        if len(samples) == 0:
+            return None, None
+
+        preamble_len = int(min(max(preamble_length, 1), len(samples)))
+        preamble = samples[:preamble_len]
+
+        # Phase-invariant gain estimate from preamble RMS.
+        preamble_rms = np.sqrt(np.mean(np.abs(preamble) ** 2))
+        if (not np.isfinite(preamble_rms)) or preamble_rms <= 0:
+            return None, None
+
+        gain = float(target_magnitude / preamble_rms)
+        if (not np.isfinite(gain)) or gain <= 0:
+            return None, None
+
+        return samples * gain, gain
 
     def phase_locked_loop(self, samples: np.ndarray, pll_preamble: np.ndarray = None):
         """"""

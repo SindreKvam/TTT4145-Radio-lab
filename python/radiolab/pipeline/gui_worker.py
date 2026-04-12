@@ -72,6 +72,7 @@ class LiveDashboard(QMainWindow):
             "ted_too_short": 0,
             "fine_no_peak": 0,
             "header_decode_failed": 0,
+            "agc_invalid_gain": 0,
             "exception": 0,
         }
 
@@ -220,8 +221,10 @@ class LiveDashboard(QMainWindow):
                 f"decoded={self.rx_decoded_count}/{self.rx_total_count} ({decode_rate:.1f}%) | "
                 f"debug samples={self.rx_debug_sample_count} | "
                 f"fails(sampled): coarse={self.rx_fail_counts['coarse_no_peak']} "
+                f"ted={self.rx_fail_counts['ted_too_short']} "
                 f"fine={self.rx_fail_counts['fine_no_peak']} "
                 f"hdr={self.rx_fail_counts['header_decode_failed']} "
+                f"agc={self.rx_fail_counts['agc_invalid_gain']} "
                 f"exc={self.rx_fail_counts['exception']}"
             )
 
