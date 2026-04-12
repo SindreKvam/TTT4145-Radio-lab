@@ -173,14 +173,14 @@ class LiveDashboard(QMainWindow):
         # Update Rx constellations
         if self.rx_symbols_mf is not None:
             self.rx_const_mf_scatter.setData(
-                x=self.rx_symbols_mf.real[:500],
-                y=self.rx_symbols_mf.imag[:500],
+                x=self.rx_symbols_mf.real,
+                y=self.rx_symbols_mf.imag,
             )
 
         if self.rx_symbols_pll is not None:
             self.rx_const_pll_scatter.setData(
-                x=self.rx_symbols_pll.real[:500],
-                y=self.rx_symbols_pll.imag[:500],
+                x=self.rx_symbols_pll.real,
+                y=self.rx_symbols_pll.imag,
             )
 
         # Update correlation plot
@@ -193,8 +193,8 @@ class LiveDashboard(QMainWindow):
         # Update Tx constellation
         if self.tx_const_symbols is not None:
             self.tx_const_scatter.setData(
-                x=self.tx_const_symbols.real[:500],
-                y=self.tx_const_symbols.imag[:500],
+                x=self.tx_const_symbols.real,
+                y=self.tx_const_symbols.imag,
             )
 
         if self.tx_image is not None:

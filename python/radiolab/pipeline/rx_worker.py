@@ -46,7 +46,7 @@ class RxWorker(Process):
         self.ted_margin_symbols = 8
         self.rx_seq = 0
         self.debug_corr_slice_len = 400
-        self.debug_symbol_slice_len = 250
+        self.debug_symbol_slice_len = 500
         self.debug_success_every_n = 10
         self.debug_plot_every_n = 5
 
