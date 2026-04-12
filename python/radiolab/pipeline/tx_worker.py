@@ -58,6 +58,7 @@ class TxWorker(Process):
         self.camera = CameraSource()
         self.framer = Framer()
         self.frame_counter = 0
+        self.tx_const_preview_len = 250
 
         rrc, rrc_coeff = rrcosfilter(
             self.config.rrc_span * self.config.samples_per_symbol + 1,
@@ -136,9 +137,10 @@ class TxWorker(Process):
                 frame_counter=self.frame_counter,
             )
 
-            data = self.phy.modulate_payload(data)
+            payload = self.phy.modulate_payload(data)
+
             data = self.phy.add_pll_preamble(
-                data, preamble_length=self.config.pll_preamble_length
+                payload, preamble_length=self.config.pll_preamble_length
             )
             data = self.phy.add_modulated_codeword(data, self.config.codeword_length)
             data = self.phy.upsample(data)
@@ -149,14 +151,14 @@ class TxWorker(Process):
             try:
                 self.tx_queue.put_nowait(data)
             except Full:
-                logger.warning("Tx Queue Full!")
+                # logger.warning("Tx Queue Full!")
                 continue
 
             try:
                 self.gui_queue.put_nowait(
                     {
                         "type": "tx_update",
-                        "tx_data": data,
+                        "tx_const_preview": payload[: self.tx_const_preview_len],
                         "metadata": job.metadata,
                         # TODO: Move re-structuring of image to app / link layer
                         "tx_image": np.transpose(

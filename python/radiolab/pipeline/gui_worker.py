@@ -63,6 +63,17 @@ class LiveDashboard(QMainWindow):
         self.tx_image = None
         self.rx_image = None
         self.rx_metadata = None
+        self.rx_debug = None
+        self.rx_total_count = 0
+        self.rx_decoded_count = 0
+        self.rx_debug_sample_count = 0
+        self.rx_fail_counts = {
+            "coarse_no_peak": 0,
+            "ted_too_short": 0,
+            "fine_no_peak": 0,
+            "header_decode_failed": 0,
+            "exception": 0,
+        }
 
         self.setWindowTitle("Radiolab - TX/RX Dashboard")
         self.resize(1600, 1000)
@@ -74,12 +85,14 @@ class LiveDashboard(QMainWindow):
         layout.setColumnStretch(0, 1)
         layout.setColumnStretch(1, 1)
         layout.setColumnStretch(2, 1)
-        layout.setRowStretch(0, 1)
+        layout.setRowStretch(0, 0)
         layout.setRowStretch(1, 1)
         layout.setRowStretch(2, 1)
+        layout.setRowStretch(3, 1)
 
         self.status_label = QLabel("Initializing...")
-        layout.addWidget(self.status_label, 0, 0, 1, 2)
+        self.status_label.setWordWrap(True)
+        layout.addWidget(self.status_label, 0, 0, 1, 3)
 
         self._create_plots(layout)
 
@@ -97,7 +110,7 @@ class LiveDashboard(QMainWindow):
             size=5, pen=None, brush=pg.mkBrush(255, 100, 100, 200)
         )
         self.tx_const_plot.addItem(self.tx_const_scatter)
-        layout.addWidget(self.tx_const_plot, 0, 0)
+        layout.addWidget(self.tx_const_plot, 1, 0)
 
         # Rx Constellation Plots
         self.rx_const_mf_plot = pg.PlotWidget(title="RX Matched filtered data")
@@ -108,7 +121,7 @@ class LiveDashboard(QMainWindow):
         self.rx_const_mf_plot.addItem(self.rx_const_mf_scatter)
         self.rx_const_mf_plot.setXRange(-1.2, 1.2, padding=0)
         self.rx_const_mf_plot.setYRange(-1.2, 1.2, padding=0)
-        layout.addWidget(self.rx_const_mf_plot, 0, 1)
+        layout.addWidget(self.rx_const_mf_plot, 1, 1)
 
         self.rx_const_pll_plot = pg.PlotWidget(title="RX Phase locked data")
         self.rx_const_pll_plot.setAspectLocked(True)
@@ -118,7 +131,7 @@ class LiveDashboard(QMainWindow):
         self.rx_const_pll_plot.addItem(self.rx_const_pll_scatter)
         self.rx_const_pll_plot.setXRange(-1.2, 1.2, padding=0)
         self.rx_const_pll_plot.setYRange(-1.2, 1.2, padding=0)
-        layout.addWidget(self.rx_const_pll_plot, 0, 2)
+        layout.addWidget(self.rx_const_pll_plot, 1, 2)
 
         # Rx Correlation plot
         self.rx_correlation_plot = pg.PlotWidget(title="Rx Correlation data")
@@ -127,19 +140,19 @@ class LiveDashboard(QMainWindow):
             pen=pg.mkPen(color=(100, 200, 100), width=2)
         )
         self.rx_correlation_plot.addItem(self.rx_correlation_curve)
-        layout.addWidget(self.rx_correlation_plot, 1, 0)
+        layout.addWidget(self.rx_correlation_plot, 2, 0)
 
         self.tx_image_view = pg.ImageView()
         self.tx_image_view.ui.roiBtn.hide()
         self.tx_image_view.ui.menuBtn.hide()
         self.tx_image_view.setWindowTitle("Transmitted image")
-        layout.addWidget(self.tx_image_view, 2, 0)
+        layout.addWidget(self.tx_image_view, 3, 0)
 
         self.rx_image_view = pg.ImageView()
         self.rx_image_view.ui.roiBtn.hide()
         self.rx_image_view.ui.menuBtn.hide()
         self.rx_image_view.setWindowTitle("Received image")
-        layout.addWidget(self.rx_image_view, 2, 1)
+        layout.addWidget(self.rx_image_view, 3, 1)
 
     def _update_plots(self) -> None:
         """"""
@@ -172,8 +185,8 @@ class LiveDashboard(QMainWindow):
         # Update correlation plot
         if self.rx_correlation is not None:
             self.rx_correlation_curve.setData(
-                x=np.arange(0, 500, 1),
-                y=self.rx_correlation[:500],
+                x=np.arange(0, len(self.rx_correlation), 1),
+                y=self.rx_correlation,
             )
 
         # Update Tx constellation
@@ -194,18 +207,56 @@ class LiveDashboard(QMainWindow):
 
         msg_type = msg.get("type")
 
+        def _refresh_status(
+            seq=None,
+            reason="-",
+        ):
+            decode_rate = 0.0
+            if self.rx_total_count > 0:
+                decode_rate = 100.0 * self.rx_decoded_count / self.rx_total_count
+
+            self.status_label.setText(
+                f"RX seq={seq if seq is not None else '-'} | reason={reason} | "
+                f"decoded={self.rx_decoded_count}/{self.rx_total_count} ({decode_rate:.1f}%) | "
+                f"debug samples={self.rx_debug_sample_count} | "
+                f"fails(sampled): coarse={self.rx_fail_counts['coarse_no_peak']} "
+                f"fine={self.rx_fail_counts['fine_no_peak']} "
+                f"hdr={self.rx_fail_counts['header_decode_failed']} "
+                f"exc={self.rx_fail_counts['exception']}"
+            )
+
         match msg_type:
+            case "rx_debug":
+                self.rx_debug = msg
+                self.rx_debug_sample_count += 1
+                seq = msg.get("seq")
+                if isinstance(seq, int):
+                    self.rx_total_count = max(self.rx_total_count, seq + 1)
+
+                reason = msg.get("reason", "unknown")
+                if reason in self.rx_fail_counts:
+                    self.rx_fail_counts[reason] += 1
+
+                reason = msg.get("reason", "-")
+                _refresh_status(
+                    seq=msg.get("seq"),
+                    reason=reason,
+                )
+
+            case "rx_debug_plot":
+                correlation = msg.get("correlation")
+                if correlation is not None and len(correlation) > 0:
+                    self.rx_correlation = correlation
+
             case "rx_update":
-                self.rx_correlation = msg.get("correlation")
-                self.rx_symbols_mf = msg.get("matched_filtered_data")
-                self.rx_symbols_pll = msg.get("phase_locked_data")
+                # Keep rx_debug correlation as primary for diagnostics.
+                self.rx_symbols_mf = msg.get("matched_filtered_preview")
+                self.rx_symbols_pll = msg.get("phase_locked_preview")
                 self.rx_metadata = msg.get("rx_metadata")
                 rx_payload = msg.get("rx_payload")
+                self.rx_decoded_count += 1
 
-                # Decode and generate image
-                # TODO: This should not happen here!
                 if self.rx_metadata is not None:
-                    logger.info("DECODING IMAGE")
                     expected_len = (
                         self.rx_metadata["img_width"]
                         * self.rx_metadata["img_height"]
@@ -225,6 +276,14 @@ class LiveDashboard(QMainWindow):
                         (1, 0, 2),
                     )
 
+                if self.rx_debug is not None:
+                    _refresh_status(
+                        seq=self.rx_debug.get("seq"),
+                        reason="decoded_frame",
+                    )
+                else:
+                    _refresh_status(reason="decoded_frame")
+
             case "tx_update":
-                self.tx_const_symbols = msg.get("tx_data")
+                self.tx_const_symbols = msg.get("tx_const_preview")
                 self.tx_image = msg.get("tx_image")

@@ -44,6 +44,11 @@ class RxWorker(Process):
         self.max_timeout = max_timeout
         self.framer = Framer()
         self.ted_margin_symbols = 8
+        self.rx_seq = 0
+        self.debug_corr_slice_len = 400
+        self.debug_symbol_slice_len = 250
+        self.debug_success_every_n = 10
+        self.debug_plot_every_n = 5
 
         rrc, rrc_coeff = rrcosfilter(
             self.config.rrc_span * self.config.samples_per_symbol + 1,
@@ -89,6 +94,46 @@ class RxWorker(Process):
 
         self.phy = ModemRx(qam, self.config.samples_per_symbol, rrc_coeff)
 
+    def _emit_rx_debug(
+        self,
+        seq: int,
+        ok: bool,
+        reason: str,
+        times_ms: dict,
+        metadata: dict | None = None,
+    ) -> None:
+        msg = {
+            "type": "rx_debug",
+            "seq": seq,
+            "timestamp_ns": time.perf_counter_ns(),
+            "ok": ok,
+            "reason": reason,
+            "times_ms": times_ms,
+            "decode": {
+                "metadata_ok": metadata is not None,
+                "metadata": metadata,
+            },
+        }
+
+        try:
+            self.gui_queue.put_nowait(msg)
+        except Full:
+            logger.warning("Dropping RX debug frame")
+
+    def _emit_rx_debug_plot(
+        self, seq: int, correlation: np.ndarray, source: str
+    ) -> None:
+        msg = {
+            "type": "rx_debug_plot",
+            "seq": seq,
+            "source": source,
+            "correlation": correlation[: self.debug_corr_slice_len],
+        }
+        try:
+            self.gui_queue.put_nowait(msg)
+        except Full:
+            logger.warning("Dropping RX debug plot frame")
+
     def run(self) -> None:
         """"""
 
@@ -100,9 +145,27 @@ class RxWorker(Process):
                 continue
 
             try:
+                seq = self.rx_seq
+                self.rx_seq += 1
+
                 start_time = time.perf_counter_ns()
+                times_ms = {
+                    "matched_filter": None,
+                    "coarse_corr": None,
+                    "coarse_detect": None,
+                    "ted": None,
+                    "fine_corr": None,
+                    "fine_detect": None,
+                    "remove_code": None,
+                    "agc": None,
+                    "pll": None,
+                    "demod": None,
+                    "total": None,
+                }
+
                 matched_filtered_data = self.phy.matched_filtering(rx_data)
                 matched_filter_time = time.perf_counter_ns()
+                times_ms["matched_filter"] = (matched_filter_time - start_time) * 10e-6
                 # matched_filtered_data = self.phy.coarse_frequency_offset(
                 #     matched_filtered_data
                 # )
@@ -112,15 +175,27 @@ class RxWorker(Process):
                     matched_filtered_data, self.code_os
                 )
                 coarse_correlation_time = time.perf_counter_ns()
+                times_ms["coarse_corr"] = (
+                    coarse_correlation_time - coarse_frequency_time
+                ) * 10e-6
 
-                coarse_peak_index, _ = self.phy.detect_peak(
+                coarse_peak_index, coarse_peak_val = self.phy.detect_peak(
                     coarse_correlation,
                     threshold=self.coarse_corr_threshold,
                 )
                 coarse_detect_time = time.perf_counter_ns()
+                times_ms["coarse_detect"] = (
+                    coarse_detect_time - coarse_correlation_time
+                ) * 10e-6
 
                 if coarse_peak_index is None:
-                    logger.warning("Coarse correlation found no data, dropping")
+                    if seq % self.debug_success_every_n == 0:
+                        self._emit_rx_debug(
+                            seq=seq,
+                            ok=False,
+                            reason="coarse_no_peak",
+                            times_ms=times_ms,
+                        )
                     continue
 
                 coarse_start_index = self.phy.peak_to_start(
@@ -134,19 +209,33 @@ class RxWorker(Process):
 
                 matched_filtered_data = self.phy.recover_timing(ted_input)
                 timing_recovery_time = time.perf_counter_ns()
+                times_ms["ted"] = (timing_recovery_time - coarse_detect_time) * 10e-6
 
                 correlation = self.phy.correlate_with_codeword(
                     matched_filtered_data, self.code_sym
                 )
                 correlation_time = time.perf_counter_ns()
+                times_ms["fine_corr"] = (
+                    correlation_time - timing_recovery_time
+                ) * 10e-6
 
-                fine_peak_index, _ = self.phy.detect_peak(
+                fine_peak_index, fine_peak_val = self.phy.detect_peak(
                     correlation,
                     threshold=self.config.codeword_corr_threshold,
                 )
                 detect_codeword_time = time.perf_counter_ns()
+                times_ms["fine_detect"] = (
+                    detect_codeword_time - correlation_time
+                ) * 10e-6
 
                 if fine_peak_index is None:
+                    if seq % self.debug_success_every_n == 0:
+                        self._emit_rx_debug(
+                            seq=seq,
+                            ok=False,
+                            reason="fine_no_peak",
+                            times_ms=times_ms,
+                        )
                     continue
 
                 start_of_data_index = self.phy.peak_to_start(
@@ -161,10 +250,14 @@ class RxWorker(Process):
                     len(self.code_sym),
                 )
                 remove_codeword_time = time.perf_counter_ns()
+                times_ms["remove_code"] = (
+                    remove_codeword_time - detect_codeword_time
+                ) * 10e-6
 
                 # Should be AGC
                 matched_filtered_data /= np.max(matched_filtered_data)
                 agc_time = time.perf_counter_ns()
+                times_ms["agc"] = (agc_time - remove_codeword_time) * 10e-6
 
                 _preamble = np.array(
                     [1.0 + 1.0j, -1.0 + 1.0j, -1.0 - 1.0j, 1.0 - 1.0j]
@@ -174,6 +267,7 @@ class RxWorker(Process):
                     matched_filtered_data, pll_preamble=_preamble
                 )
                 phase_locked_loop_time = time.perf_counter_ns()
+                times_ms["pll"] = (phase_locked_loop_time - agc_time) * 10e-6
 
                 demodulated_symbols = np.asarray(
                     self.phy.qam.demodulate_array(
@@ -182,18 +276,44 @@ class RxWorker(Process):
                     dtype=int,
                 )
                 demodulate_time = time.perf_counter_ns()
+                times_ms["demod"] = (demodulate_time - phase_locked_loop_time) * 10e-6
                 metadata, framed_payload = self.framer.unpack_frame(
                     demodulated_symbols,
                     modulation_order=self.config.modulation_order,
                 )
                 if metadata is None:
-                    logger.warning(
-                        "Failed to extract RX metadata header; dropping frame "
-                        "(likely too many bit errors)"
+                    times_ms["total"] = (time.perf_counter_ns() - start_time) * 10e-6
+                    if seq % self.debug_plot_every_n == 0:
+                        self._emit_rx_debug_plot(
+                            seq=seq,
+                            correlation=correlation,
+                            source="fine",
+                        )
+                    self._emit_rx_debug(
+                        seq=seq,
+                        ok=False,
+                        reason="header_decode_failed",
+                        times_ms=times_ms,
                     )
                     continue
                 else:
                     logger.info(f"Received metadata: {metadata}")
+
+                times_ms["total"] = (time.perf_counter_ns() - start_time) * 10e-6
+                if seq % self.debug_plot_every_n == 0:
+                    self._emit_rx_debug_plot(
+                        seq=seq,
+                        correlation=correlation,
+                        source="fine",
+                    )
+                if seq % self.debug_success_every_n == 0:
+                    self._emit_rx_debug(
+                        seq=seq,
+                        ok=True,
+                        reason="ok",
+                        times_ms=times_ms,
+                        metadata=metadata,
+                    )
 
                 logger.info(
                     f"Times: Matched filtering: {(matched_filter_time - start_time) * 10e-6:.3f} ms, "
@@ -212,19 +332,24 @@ class RxWorker(Process):
 
             except Exception as exc:
                 logger.exception(f"Failed while processing Rx data: {exc}")
+                self._emit_rx_debug(
+                    seq=seq,
+                    ok=False,
+                    reason="exception",
+                    times_ms=times_ms,
+                )
                 continue
 
             try:
                 self.gui_queue.put_nowait(
                     {
                         "type": "rx_update",
-                        "correlation": correlation[start_of_data_index:],
-                        "matched_filtered_data": matched_filtered_data[
+                        "matched_filtered_preview": matched_filtered_data[
                             self.config.pll_preamble_length :
-                        ],
-                        "phase_locked_data": phase_locked_data[
+                        ][: self.debug_symbol_slice_len],
+                        "phase_locked_preview": phase_locked_data[
                             self.config.pll_preamble_length :
-                        ],
+                        ][: self.debug_symbol_slice_len],
                         "rx_metadata": metadata,
                         "rx_payload": framed_payload,
                         # "decoded_data": decoded_data,
