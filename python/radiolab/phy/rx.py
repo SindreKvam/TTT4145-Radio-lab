@@ -150,3 +150,21 @@ class ModemRx:
             samples, self.qam_lut, pll_preamble
         )
         return np.asarray(phase_locked_data, dtype=samples.dtype)
+
+    def phase_locked_loop_with_stats(
+        self, samples: np.ndarray, pll_preamble: np.ndarray = None
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Run PLL and return (derotated, phase_error, theta_history)."""
+
+        phase_locked_data, phase_error, theta_history = (
+            self.pll.phase_locked_loop_with_stats_array(
+                samples,
+                self.qam_lut,
+                pll_preamble,
+            )
+        )
+        return (
+            np.asarray(phase_locked_data, dtype=samples.dtype),
+            np.asarray(phase_error, dtype=float),
+            np.asarray(theta_history, dtype=float),
+        )

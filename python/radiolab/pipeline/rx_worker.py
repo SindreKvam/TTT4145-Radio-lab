@@ -46,6 +46,7 @@ class RxWorker(Process):
         self.ted_margin_symbols = 8
         self.rx_seq = 0
         self.debug_corr_slice_len = 400
+        self.debug_pll_stat_slice_len = 1000
         self.debug_symbol_slice_len = 500
         self.debug_success_every_n = 10
         self.debug_plot_every_n = 5
@@ -120,14 +121,12 @@ class RxWorker(Process):
         except Full:
             logger.warning("Dropping RX debug frame")
 
-    def _emit_rx_debug_plot(
-        self, seq: int, correlation: np.ndarray, source: str
-    ) -> None:
+    def _emit_rx_debug_plot(self, seq: int, plot: str, data: np.ndarray) -> None:
         msg = {
             "type": "rx_debug_plot",
             "seq": seq,
-            "source": source,
-            "correlation": correlation[: self.debug_corr_slice_len],
+            "plot": plot,
+            "data": data,
         }
         try:
             self.gui_queue.put_nowait(msg)
@@ -268,7 +267,6 @@ class RxWorker(Process):
                 if matched_filtered_data is None:
                     self._emit_rx_debug(
                         seq=seq,
-                        stage="agc",
                         ok=False,
                         reason="agc_invalid_gain",
                         times_ms=times_ms,
@@ -283,8 +281,11 @@ class RxWorker(Process):
                     [1.0 + 1.0j, -1.0 + 1.0j, -1.0 - 1.0j, 1.0 - 1.0j]
                     * (self.config.pll_preamble_length // 4)
                 )
-                phase_locked_data = self.phy.phase_locked_loop(
-                    matched_filtered_data, pll_preamble=_preamble
+                phase_locked_data, pll_error, pll_theta = (
+                    self.phy.phase_locked_loop_with_stats(
+                        matched_filtered_data,
+                        pll_preamble=_preamble,
+                    )
                 )
                 phase_locked_loop_time = time.perf_counter_ns()
                 times_ms["pll"] = (phase_locked_loop_time - agc_time) * 10e-6
@@ -309,8 +310,8 @@ class RxWorker(Process):
                     if seq % self.debug_plot_every_n == 0:
                         self._emit_rx_debug_plot(
                             seq=seq,
-                            correlation=correlation,
-                            source="fine",
+                            plot="correlation",
+                            data=correlation[: self.debug_corr_slice_len],
                         )
                     self._emit_rx_debug(
                         seq=seq,
@@ -326,9 +327,21 @@ class RxWorker(Process):
                 if seq % self.debug_plot_every_n == 0:
                     self._emit_rx_debug_plot(
                         seq=seq,
-                        correlation=correlation,
-                        source="fine",
+                        plot="correlation",
+                        data=correlation[: self.debug_corr_slice_len],
                     )
+
+                # Only send full PLL internals for frames that actually decode.
+                self._emit_rx_debug_plot(
+                    seq=seq,
+                    plot="pll_error",
+                    data=pll_error[: self.debug_pll_stat_slice_len],
+                )
+                self._emit_rx_debug_plot(
+                    seq=seq,
+                    plot="pll_theta",
+                    data=pll_theta[: self.debug_pll_stat_slice_len],
+                )
                 if seq % self.debug_success_every_n == 0:
                     self._emit_rx_debug(
                         seq=seq,

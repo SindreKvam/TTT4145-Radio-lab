@@ -60,6 +60,8 @@ class LiveDashboard(QMainWindow):
         self.rx_symbols_mf = None
         self.rx_symbols_pll = None
         self.rx_correlation = None
+        self.rx_pll_error = None
+        self.rx_pll_theta = None
         self.tx_image = None
         self.rx_image = None
         self.rx_metadata = None
@@ -90,6 +92,7 @@ class LiveDashboard(QMainWindow):
         layout.setRowStretch(1, 1)
         layout.setRowStretch(2, 1)
         layout.setRowStretch(3, 1)
+        layout.setRowStretch(4, 1)
 
         self.status_label = QLabel("Initializing...")
         self.status_label.setWordWrap(True)
@@ -136,7 +139,7 @@ class LiveDashboard(QMainWindow):
 
         # Rx Correlation plot
         self.rx_correlation_plot = pg.PlotWidget(title="Rx Correlation data")
-        self.rx_correlation_plot.setAspectLocked(True)
+        # self.rx_correlation_plot.setAspectLocked(True)
         self.rx_correlation_curve = pg.PlotCurveItem(
             pen=pg.mkPen(color=(100, 200, 100), width=2)
         )
@@ -147,13 +150,28 @@ class LiveDashboard(QMainWindow):
         self.tx_image_view.ui.roiBtn.hide()
         self.tx_image_view.ui.menuBtn.hide()
         self.tx_image_view.setWindowTitle("Transmitted image")
-        layout.addWidget(self.tx_image_view, 3, 0)
+        layout.addWidget(self.tx_image_view, 4, 0)
 
         self.rx_image_view = pg.ImageView()
         self.rx_image_view.ui.roiBtn.hide()
         self.rx_image_view.ui.menuBtn.hide()
         self.rx_image_view.setWindowTitle("Received image")
-        layout.addWidget(self.rx_image_view, 3, 1)
+        layout.addWidget(self.rx_image_view, 4, 1)
+
+        # PLL phase error plot
+        self.rx_pll_error_plot = pg.PlotWidget(title="RX PLL Phase Error")
+        self.rx_pll_error_curve = pg.PlotCurveItem(
+            pen=pg.mkPen(color=(200, 120, 120), width=2)
+        )
+        self.rx_pll_error_plot.addItem(self.rx_pll_error_curve)
+        layout.addWidget(self.rx_pll_error_plot, 2, 1)
+
+        self.rx_pll_theta_plot = pg.PlotWidget(title="RX PLL Theta")
+        self.rx_pll_theta_curve = pg.PlotCurveItem(
+            pen=pg.mkPen(color=(120, 120, 220), width=2)
+        )
+        self.rx_pll_theta_plot.addItem(self.rx_pll_theta_curve)
+        layout.addWidget(self.rx_pll_theta_plot, 2, 2)
 
     def _update_plots(self) -> None:
         """"""
@@ -188,6 +206,19 @@ class LiveDashboard(QMainWindow):
             self.rx_correlation_curve.setData(
                 x=np.arange(0, len(self.rx_correlation), 1),
                 y=self.rx_correlation,
+            )
+
+        # Update PLL phase error plot
+        if self.rx_pll_error is not None:
+            self.rx_pll_error_curve.setData(
+                x=np.arange(0, len(self.rx_pll_error), 1),
+                y=self.rx_pll_error,
+            )
+
+        if self.rx_pll_theta is not None:
+            self.rx_pll_theta_curve.setData(
+                x=np.arange(0, len(self.rx_pll_theta), 1),
+                y=self.rx_pll_theta,
             )
 
         # Update Tx constellation
@@ -247,9 +278,17 @@ class LiveDashboard(QMainWindow):
                 )
 
             case "rx_debug_plot":
-                correlation = msg.get("correlation")
-                if correlation is not None and len(correlation) > 0:
-                    self.rx_correlation = correlation
+                plot = msg.get("plot")
+                data = msg.get("data")
+                if data is None or len(data) == 0:
+                    return
+
+                if plot == "correlation":
+                    self.rx_correlation = data
+                elif plot == "pll_error":
+                    self.rx_pll_error = data
+                elif plot == "pll_theta":
+                    self.rx_pll_theta = data
 
             case "rx_update":
                 # Keep rx_debug correlation as primary for diagnostics.
