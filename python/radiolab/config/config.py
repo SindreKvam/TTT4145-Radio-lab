@@ -6,13 +6,13 @@ from typing import Any
 class PhyConfig:
     """Configurations for PHY layer"""
 
-    modulation_order: int = 4
+    modulation_order: int = 16
     samples_per_symbol: int = 8  # sps
     pll_preamble_length: int = 600
     codeword_length: int = 64
     codeword_corr_threshold: int = 800  # 800 for 4-QAM
 
-    rrc_beta: float = 0.5
+    rrc_beta: float = 0.707
     rrc_span: int = 10
 
 
@@ -20,15 +20,15 @@ class PhyConfig:
 class RadioConfig:
     """Configuration directly on hardware layer"""
 
-    rx_rf_bandwidth: int = 40_000_000
+    rx_rf_bandwidth: int = 20_000_000
     sample_rate: int = 10_000_000
     rx_buffer_size: int = 1_000_000
-    rx_lo_hz: int = 2_400_000_000
-    tx_lo_hz: int = 2_400_000_000
+    rx_lo_hz: int = 2_472_000_000  # Centre of channel 13: 2.472 GHz
+    tx_lo_hz: int = 2_472_000_000  # Between channel 8 and 9: 2.450 GHz
     tx_cyclic_buffer: bool = False
-    tx_hardwaregain_chan0 = -30
+    tx_hardwaregain_chan0 = 0
     gain_control_mode_chan0 = (
-        "manual"  # Valid configurations: ["manual", "slow_attack", "fast_attack"]
+        "fast_attack"  # Valid configurations: ["manual", "slow_attack", "fast_attack"]
     )
 
     quadrature_tracking_en = False
