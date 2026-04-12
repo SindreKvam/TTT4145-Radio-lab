@@ -1,6 +1,7 @@
 #pragma once
 
 #include <complex>
+#include <tuple>
 #include <vector>
 
 class Pll {
@@ -15,4 +16,11 @@ class Pll {
     phase_lock(const std::vector<std::complex<float>> &signal,
                const std::vector<std::complex<float>> &lut,
                const std::vector<std::complex<float>> &pll_preamble = {}) const;
+
+    std::tuple<std::vector<std::complex<float>>, std::vector<float>,
+               std::vector<float>>
+    phase_lock_with_stats(
+        const std::vector<std::complex<float>> &signal,
+        const std::vector<std::complex<float>> &lut,
+        const std::vector<std::complex<float>> &pll_preamble = {}) const;
 };
