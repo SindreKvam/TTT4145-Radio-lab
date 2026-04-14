@@ -1,0 +1,1 @@
+g++ symbol_sync.cpp ../core/root_raised_cosine.cpp ../core/fir.cpp ../modem/modem.cpp 
