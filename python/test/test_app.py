@@ -11,6 +11,5 @@ logger = logging.getLogger(__name__)
 def test_image_source(image_path):
     img_src = ImageSource(image_path)
     img = img_src.read()
-    logger.info(img)
 
     assert isinstance(img, bytes)

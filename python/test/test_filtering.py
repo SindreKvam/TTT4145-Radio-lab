@@ -12,7 +12,6 @@ output_folder = Path(__file__).parent / "pytest-output/"
 output_folder.mkdir(parents=True, exist_ok=True)
 
 
-# @pytest.mark.parametrize("beta", [0.2, 0.707, 1])
 @pytest.mark.parametrize("span", [4, 8, 10])
 @pytest.mark.parametrize("sps", [4, 8, 16])
 def test_matched_filter(span, sps):
@@ -25,10 +24,6 @@ def test_matched_filter(span, sps):
     pytest.approx(1, np.sum(rrc_coeff_1))
 
     plt.figure()
-    plt.grid()
-    # plt.stem(rrc_coeff_0_2, label="$\\beta=0.2$", markerfmt="C0")
-    # plt.stem(rrc_coeff_0_707, label="$\\beta=0.707$", markerfmt="C1")
-    # plt.stem(rrc_coeff_1, label="$\\beta=1.0$", markerfmt="C2")
     plt.plot(rrc_coeff_0_2, "o", label="$\\beta=0.2$", alpha=0.8)
     plt.plot(rrc_coeff_0_707, "x", label="$\\beta=0.707$", alpha=0.8)
     plt.plot(rrc_coeff_1, "*", label="$\\beta=1.0$", alpha=0.8)
@@ -38,5 +33,5 @@ def test_matched_filter(span, sps):
     plt.xlabel("Coefficient")
     plt.ylabel("Amplitude")
     plt.legend()
-    plt.savefig(output_folder / f"rrc_span={span}_sps={sps}.png", dpi=300)
+    plt.savefig(output_folder / f"rrc_span={span}_sps={sps}")
     plt.close("all")

@@ -9,10 +9,6 @@ import pytest
 logger = logging.getLogger(__name__)
 
 
-parent_folder = Path(__file__).parent
-
-plt.style.use(str(parent_folder.parent / "style.mplstyle"))
-
 output_folder = Path(__file__).parent / "pytest-output/"
 output_folder.mkdir(parents=True, exist_ok=True)
 
@@ -34,13 +30,13 @@ def test_modem(num_symbols):
         )
 
     title = f"{num_symbols}-QAM Constellation"
-    plt.title(title)
+    plt.suptitle(title)
     plt.axis("equal")
     plt.ylabel("Quadrature (Q)")
     plt.xlabel("In-phase (I)")
     plt.ylim([-1.2, 1.2])
     plt.grid(alpha=0.3)
-    plt.savefig(output_folder / (title + ".svg"), dpi=300)
+    plt.savefig(output_folder / title)
 
 
 @pytest.mark.parametrize("num_symbols", [4, 16, 64, 256])
