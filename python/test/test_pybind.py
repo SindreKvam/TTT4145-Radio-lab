@@ -54,95 +54,135 @@ def test_modem_array_roundtrip(num_symbols):
     assert np.array_equal(demodulated, data)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("k_p,k_i", [[0.0222, 0.00024]])
-@pytest.mark.parametrize("pll_preamble_length", [300, 600, 1200])
+@pytest.mark.parametrize(
+    "preamble_length,data_length", [[300, 450], [600, 900], [1200, 1800]]
+)
 @pytest.mark.parametrize("phase_offset", [30, 45])
 @pytest.mark.parametrize("frequency_offset", [0.1, 1, 10])
+@pytest.mark.parametrize("snr_db", [30, 20, 10])
+@pytest.mark.parametrize("modulation", [4, 16, 64])
 def test_phase_locked_loop(
+    preamble,
+    modulated_noisy_data_with_preamble,
     k_p: float,
     k_i: float,
-    pll_preamble_length: int,
+    modulation: int,
+    snr_db: float,
+    preamble_length: int,
+    data_length: int,
     phase_offset: int,
     frequency_offset: int,
 ):
-    pll = Pll(k_p, k_i)
-    qam_16 = modem.Qam(16)
 
-    data_length = int(pll_preamble_length * 1.5)
-    data = np.random.randint(0, 16, size=(data_length,), dtype=np.uint16)
-    modulated_data = np.asarray(qam_16.modulate_array(data))
+    data = modulated_noisy_data_with_preamble
 
-    _preamble = np.array(
-        [1.0 + 1.0j, -1.0 + 1.0j, -1.0 - 1.0j, 1.0 - 1.0j] * (pll_preamble_length // 4)
-    )
-
-    data = np.concatenate((_preamble, modulated_data))
-
+    # Add frequency and phase shift
     t = np.arange(len(data))
-    data *= np.exp(
-        -1j * frequency_offset * np.pi / 180 * t
-    )  # 0.1 degree phase shift per sample
-    data *= np.exp(-1j * phase_offset * np.pi / 180)  # 45 degree phase shift
+    data *= np.exp(-1j * frequency_offset * np.pi / 180 * t)
+    data *= np.exp(-1j * phase_offset * np.pi / 180)
+
+    # Perform phase locked loop
+    pll = Pll(k_p, k_i)
+    qam = modem.Qam(modulation)
 
     phase_locked_data, phase_error, theta_history = (
         pll.phase_locked_loop_with_stats_array(
             data,
-            np.array(qam_16.get_lookup_table()),
-            _preamble,
+            np.array(qam.get_lookup_table()),
+            preamble,
         )
     )
 
-    # phase_error *= 180 / np.pi
-    # theta_history *= 180 / np.pi
+    # Generate plots
+    fig, ax = plt.subplots(2, 1, constrained_layout=True, figsize=(3.5, 5))
+    fig.suptitle("Phase locked loop")
+    ax[0].set_title(
+        f"$p_e={phase_offset:.2f}$, $f_e={frequency_offset:.2f}$"
+        + f", SNR={snr_db} dB, K_p={k_p}, K_i={k_i}",
+    )
 
-    fig, ax = plt.subplots(2, 1, constrained_layout=True)
-    # ax[0].scatter(
-    #     data.real[:pll_preamble_length],
-    #     data.imag[:pll_preamble_length],
-    #     label="PLL preamble",
-    #     alpha=np.linspace(0, 0.3, pll_preamble_length),
-    # )
+    # Plot constellation diagram of received vs phase locked data
+    ax[0].set_ylabel("Quadrature (Q)")
+    ax[0].set_xlabel("In-phase (I)")
     ax[0].scatter(
-        data.real[pll_preamble_length:],
-        data.imag[pll_preamble_length:],
+        data.real[preamble_length:],
+        data.imag[preamble_length:],
         label="Received data",
         alpha=np.linspace(0.3, 0.6, data_length),
     )
-    # ax[0].scatter(
-    #     phase_locked_data.real[:pll_preamble_length],
-    #     phase_locked_data.imag[:pll_preamble_length],
-    #     label="Locked preamble",
-    # )
     ax[0].scatter(
-        phase_locked_data.real[pll_preamble_length:],
-        phase_locked_data.imag[pll_preamble_length:],
+        phase_locked_data.real[preamble_length:],
+        phase_locked_data.imag[preamble_length:],
         label="Locked data",
         alpha=np.linspace(0.4, 0.7, data_length),
     )
 
-    pll_x = np.arange(0, len(phase_error[:pll_preamble_length]))
+    # Plot the phase error from the PLL
+    pll_x = np.arange(0, len(phase_error[:preamble_length]))
     payload_x = np.arange(
-        pll_preamble_length,
-        pll_preamble_length + len(phase_error[pll_preamble_length:]),
+        preamble_length,
+        preamble_length + len(phase_error[preamble_length:]),
     )
 
-    ax[1].plot(pll_x, phase_error[:pll_preamble_length], label="")
-    ax[1].plot(0, phase_error[0], color="red", marker="o")
-    # tw_ax = ax[2].twinx()
-    # tw_ax.plot(theta_history[:pll_preamble_length] * 180 / np.pi, color="C1")
-
-    ax[1].plot(payload_x, phase_error[pll_preamble_length:])
     ax[1].plot(
-        pll_preamble_length, phase_error[pll_preamble_length], color="red", marker="o"
+        pll_x,
+        phase_error[:preamble_length],
+        label="Phase error preamble",
     )
-    # tw_ax.plot(theta_history[pll_preamble_length:] * 180 / np.pi, color="C1")
+    ax[1].scatter(
+        0,
+        phase_error[0],
+        color="C0",
+        marker="d",
+        label="$p_{e0}=" + f"{phase_error[0]:.2f}$",
+    )
+    tw_ax = ax[1].twinx()
+    tw_ax.plot(
+        pll_x,
+        theta_history[:preamble_length] % (2 * np.pi) - np.pi,
+        "--",
+        color="C0",
+        alpha=0.5,
+    )
+
+    ax[1].plot(
+        payload_x,
+        phase_error[preamble_length:],
+        label="Phase error data",
+    )
+    ax[1].scatter(
+        preamble_length,
+        phase_error[preamble_length],
+        color="C1",
+        marker="d",
+        label="$p_{es}=" + f"{phase_error[preamble_length]:.2f}$",
+    )
+    tw_ax.plot(
+        payload_x,
+        theta_history[preamble_length:] % (2 * np.pi) - np.pi,
+        "--",
+        color="C1",
+        alpha=0.5,
+    )
+    tw_ax.set_ylim([-2 * np.pi, 2 * np.pi])
+
+    ax[1].set_ylabel("Phase error (rad)")
+    ax[1].set_xlabel("Sample (n)")
+    tw_ax.set_ylabel("Phase adjustment (rad)")
+    tw_ax.grid()
 
     title = (
-        f"pll_Kp={k_p}_Ki={k_i}_len={pll_preamble_length}_F_off={frequency_offset}deg"
+        f"pll_M={modulation}_Kp={k_p}_Ki={k_i}_len={preamble_length}"
+        + f"_F_off={frequency_offset}deg"
+        + f"_P_off={phase_offset}deg"
+        + f"_SNR={snr_db}dB"
     )
 
     for a in ax.flatten():
         a.legend()
 
     plt.savefig(output_folder / (title + ".svg"))
+    plt.savefig(output_folder / (title + ".png"), dpi=300)
     plt.close("all")
