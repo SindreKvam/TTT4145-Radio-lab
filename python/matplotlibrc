@@ -113,14 +113,14 @@
 ## ***************************************************************************
 ## See https://matplotlib.org/stable/api/artist_api.html#module-matplotlib.lines
 ## for more information on line properties.
-#lines.linewidth: 1.5               # line width in points
+lines.linewidth: 1.0               # line width in points
 #lines.linestyle: -                 # solid line
 #lines.color:     C0                # has no affect on plot(); see axes.prop_cycle
 #lines.marker:          None        # the default marker
 #lines.markerfacecolor: auto        # the default marker face color
 #lines.markeredgecolor: auto        # the default marker edge color
 #lines.markeredgewidth: 1.0         # the line width around the marker symbol
-#lines.markersize:      6           # marker size, in points
+lines.markersize:      4           # marker size, in points
 #lines.dash_joinstyle:  round       # {miter, round, bevel}
 #lines.dash_capstyle:   butt        # {butt, round, projecting}
 #lines.solid_joinstyle: round       # {miter, round, bevel}
@@ -265,15 +265,15 @@
 ## relative to font.size, using the following values: xx-small, x-small,
 ## small, medium, large, x-large, xx-large, larger, or smaller
 
-#font.family:  sans-serif
+font.family:  serif
 #font.style:   normal
 #font.variant: normal
 #font.weight:  normal
 #font.stretch: normal
-#font.size:    10.0
+font.size:    8.0
 
-#font.serif:      DejaVu Serif, Bitstream Vera Serif, Computer Modern Roman, New Century Schoolbook, Century Schoolbook L, Utopia, ITC Bookman, Bookman, Nimbus Roman No9 L, Times New Roman, Times, Palatino, Charter, serif
-font.sans-serif: Helvetica, DejaVu Sans, Bitstream Vera Sans, Computer Modern Sans Serif, Lucida Grande, Verdana, Geneva, Lucid, Arial, Avant Garde, sans-serif
+font.serif:      Times New Roman, Times, DejaVu Serif
+#font.sans-serif: Helvetica, DejaVu Sans, Bitstream Vera Sans, Computer Modern Sans Serif, Lucida Grande, Verdana, Geneva, Lucid, Arial, Avant Garde, sans-serif
 #font.cursive:    Apple Chancery, Textile, Zapf Chancery, Sand, Script MT, Felipa, Comic Neue, Comic Sans MS, cursive
 #font.fantasy:    Chicago, Charcoal, Impact, Western, xkcd script, fantasy
 #font.monospace:  DejaVu Sans Mono, Bitstream Vera Sans Mono, Computer Modern Typewriter, Andale Mono, Nimbus Mono L, Courier New, Courier, Fixed, Terminal, monospace
@@ -375,13 +375,13 @@ axes.grid:          True   # display grid or not
 #axes.grid.axis:     both    # which axis the grid should apply to
 #axes.grid.which:    major   # grid lines at {major, minor, both} ticks
 #axes.titlelocation: center  # alignment of the title: {left, right, center}
-axes.titlesize:     12   # font size of the axes title
+axes.titlesize:     8   # font size of the axes title
 #axes.titleweight:   normal  # font weight of title
 #axes.titlecolor:    auto    # color of the axes title, auto falls back to
                              # text.color as default value
 #axes.titley:        None    # position title (axes relative units).  None implies auto
 #axes.titlepad:      6.0     # pad between axes and title in points
-axes.labelsize:     11  # font size of the x and y labels
+axes.labelsize:     8  # font size of the x and y labels
 #axes.labelpad:      4.0     # space between label and axis
 #axes.labelweight:   normal  # weight of the x and y labels
 #axes.labelcolor:    black
@@ -494,7 +494,7 @@ axes.axisbelow:     True    # draw axis gridlines and ticks:
 #xtick.minor.pad:     3.4     # distance to the minor tick label in points
 #xtick.color:         black   # color of the ticks
 #xtick.labelcolor:    inherit # color of the tick labels or inherit from xtick.color
-#xtick.labelsize:     medium  # font size of the tick labels
+xtick.labelsize:     7  # font size of the tick labels
 #xtick.direction:     out     # direction: {in, out, inout}
 #xtick.minor.visible: False   # visibility of minor ticks on x-axis
 #xtick.major.top:     True    # draw x axis top major ticks
@@ -516,7 +516,7 @@ axes.axisbelow:     True    # draw axis gridlines and ticks:
 #ytick.minor.pad:     3.4     # distance to the minor tick label in points
 #ytick.color:         black   # color of the ticks
 #ytick.labelcolor:    inherit # color of the tick labels or inherit from ytick.color
-#ytick.labelsize:     medium  # font size of the tick labels
+ytick.labelsize:     7  # font size of the tick labels
 #ytick.direction:     out     # direction: {in, out, inout}
 #ytick.minor.visible: False   # visibility of minor ticks on y-axis
 #ytick.major.left:    True    # draw y axis left major ticks
@@ -550,7 +550,7 @@ axes.axisbelow:     True    # draw axis gridlines and ticks:
 #legend.numpoints:     1        # the number of marker points in the legend line
 #legend.scatterpoints: 1        # number of scatter points
 #legend.markerscale:   1.0      # the relative size of legend markers vs. original
-#legend.fontsize:      medium
+legend.fontsize:      7
 #legend.labelcolor:    None
 #legend.title_fontsize: None    # None sets to the same as the default axes.
 
@@ -568,11 +568,11 @@ axes.axisbelow:     True    # draw axis gridlines and ticks:
 ## * FIGURE                                                                  *
 ## ***************************************************************************
 ## See https://matplotlib.org/stable/api/figure_api.html#matplotlib.figure.Figure
-figure.titlesize:   14     # size of the figure title (``Figure.suptitle()``)
+figure.titlesize:   9     # size of the figure title (``Figure.suptitle()``)
 #figure.titleweight: normal    # weight of the figure title
-#figure.labelsize:   large     # size of the figure label (``Figure.sup[x|y]label()``)
+figure.labelsize:   8     # size of the figure label (``Figure.sup[x|y]label()``)
 #figure.labelweight: normal    # weight of the figure label
-#figure.figsize:     6.4, 4.8  # figure size in inches
+figure.figsize:     3.5, 2.625  # figure size in inches
 #figure.dpi:         100       # figure dots per inch
 #figure.facecolor:   white     # figure face color
 #figure.edgecolor:   white     # figure edge color
@@ -596,7 +596,7 @@ figure.titlesize:   14     # size of the figure title (``Figure.suptitle()``)
 #figure.autolayout: False  # When True, automatically adjust subplot
                            # parameters to make the plot fit the figure
                            # using `tight_layout`
-#figure.constrained_layout.use: False  # When True, automatically make plot
+figure.constrained_layout.use: True  # When True, automatically make plot
                                        # elements fit on the figure. (Not
                                        # compatible with `autolayout`, above).
 ## Padding (in inches) around axes; defaults to 3/72 inches, i.e. 3 points.
