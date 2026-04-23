@@ -9,6 +9,7 @@ from modem import Qam
 
 from radiolab.config.config import PhyConfig
 from radiolab.link.framer import Framer
+from radiolab.link.scrambler import PayloadScrambler
 from radiolab.phy.rx import ModemRx
 from radiolab.phy.tx import NASA_CODEWORDS, int_to_m_bit_chunks
 
@@ -43,6 +44,12 @@ class RxWorker(Process):
         self.stop_event = stop_event
         self.max_timeout = max_timeout
         self.framer = Framer()
+        self.scrambler = PayloadScrambler(
+            seed=self.config.scrambler_seed,
+            polynomial=self.config.scrambler_polynomial,
+            width=self.config.scrambler_width,
+            enabled=self.config.scrambler_enabled,
+        )
         self.ted_margin_symbols = 8
         self.rx_seq = 0
         self.debug_corr_slice_len = 400
@@ -322,6 +329,9 @@ class RxWorker(Process):
                     continue
                 else:
                     logger.info(f"Received metadata: {metadata}")
+                    framed_payload = self.scrambler.descramble_symbols(
+                        framed_payload, self.config.modulation_order
+                    )
 
                 times_ms["total"] = (time.perf_counter_ns() - start_time) * 10e-6
                 if seq % self.debug_plot_every_n == 0:

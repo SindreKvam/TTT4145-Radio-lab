@@ -14,6 +14,7 @@ from modem import Qam
 from radiolab.app.sources import CameraSource, image_path, image_to_m_bit
 from radiolab.config.config import PhyConfig
 from radiolab.link.framer import Framer
+from radiolab.link.scrambler import PayloadScrambler
 from radiolab.phy.tx import ModemTx
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,12 @@ class TxWorker(Process):
 
         self.camera = CameraSource()
         self.framer = Framer()
+        self.scrambler = PayloadScrambler(
+            seed=self.config.scrambler_seed,
+            polynomial=self.config.scrambler_polynomial,
+            width=self.config.scrambler_width,
+            enabled=self.config.scrambler_enabled,
+        )
         self.frame_counter = 0
         self.tx_const_preview_len = 250
 
@@ -129,6 +136,8 @@ class TxWorker(Process):
         """Do the actual work of transmitting data"""
         for i in range(job.repeat):
             data = img = job.payload
+
+            data = self.scrambler.scramble_symbols(data, self.phy.M)
 
             data = self.framer.pack_frame(
                 data,

@@ -15,6 +15,11 @@ class PhyConfig:
     rrc_beta: float = 0.707
     rrc_span: int = 10
 
+    scrambler_enabled: bool = True
+    scrambler_seed: int = 0x7F
+    scrambler_polynomial: int = 0x89
+    scrambler_width: int = 7
+
 
 @dataclass
 class RadioConfig:
