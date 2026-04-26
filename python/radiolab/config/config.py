@@ -20,6 +20,13 @@ class PhyConfig:
     scrambler_polynomial: int = 0x89
     scrambler_width: int = 7
 
+    tx_static_image_scale: float = 0.1
+    tx_camera_image_scale: float = 0.4
+    tx_camera_capture_width: int = 320
+    tx_camera_capture_height: int = 240
+
+    tx_constellation_preview_len: int = 250
+
 
 @dataclass
 class RadioConfig:
@@ -27,7 +34,7 @@ class RadioConfig:
 
     rx_rf_bandwidth: int = 20_000_000
     sample_rate: int = 10_000_000
-    rx_buffer_size: int = 1_000_000
+    rx_buffer_size: int = 400_000
     rx_lo_hz: int = 2_472_000_000  # Centre of channel 13: 2.472 GHz
     tx_lo_hz: int = 2_472_000_000  # Between channel 8 and 9: 2.450 GHz
     tx_cyclic_buffer: bool = False
@@ -46,6 +53,8 @@ class GuiConfig:
     """Configurations for the GUI"""
 
     update_rate_ms = 20
+    tx_queue_size: int = 8
+    rx_queue_size: int = 8
 
 
 @dataclass

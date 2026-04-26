@@ -22,14 +22,16 @@ pg.setConfigOptions(antialias=True)
 class GuiWorker(Process):
     def __init__(
         self,
-        gui_queue: Queue,
+        tx_gui_queue: Queue,
+        rx_gui_queue: Queue,
         config: Config,
         stop_event: Event,
         name: str = "GuiWorker",
     ) -> None:
         """"""
         super().__init__(name=name, daemon=True)
-        self.gui_queue = gui_queue
+        self.tx_gui_queue = tx_gui_queue
+        self.rx_gui_queue = rx_gui_queue
         self.config = config
         self.stop_event = stop_event
 
@@ -37,7 +39,7 @@ class GuiWorker(Process):
         signal.signal(signal.SIGINT, signal.SIG_IGN)
 
         app = QApplication(sys.argv)
-        window = LiveDashboard(self.config, self.gui_queue)
+        window = LiveDashboard(self.config, self.tx_gui_queue, self.rx_gui_queue)
         window.show()
 
         def request_shutdown():
@@ -59,10 +61,11 @@ class GuiWorker(Process):
 class LiveDashboard(QMainWindow):
     """"""
 
-    def __init__(self, config: Config, gui_queue: Queue):
+    def __init__(self, config: Config, tx_gui_queue: Queue, rx_gui_queue: Queue):
         super().__init__()
         self.config = config
-        self.gui_queue = gui_queue
+        self.tx_gui_queue = tx_gui_queue
+        self.rx_gui_queue = rx_gui_queue
 
         self.tx_const_symbols = None
         self.rx_symbols_mf = None
@@ -76,6 +79,7 @@ class LiveDashboard(QMainWindow):
         self.rx_debug = None
         self.rx_total_count = 0
         self.rx_decoded_count = 0
+        self.rx_decoded_frames: set[int] = set()
         self.rx_debug_sample_count = 0
         self.rx_fail_counts = {
             "coarse_no_peak": 0,
@@ -185,11 +189,23 @@ class LiveDashboard(QMainWindow):
         """"""
 
         updated = False
+        tx_processed = 0
         while True:
             try:
-                msg = self.gui_queue.get_nowait()
+                msg = self.tx_gui_queue.get_nowait()
                 self._process_message(msg)
                 updated = True
+                tx_processed += 1
+            except Empty:
+                break
+
+        rx_processed = 0
+        while True:
+            try:
+                msg = self.rx_gui_queue.get_nowait()
+                self._process_message(msg)
+                updated = True
+                rx_processed += 1
             except Empty:
                 break
 
@@ -304,7 +320,17 @@ class LiveDashboard(QMainWindow):
                 self.rx_symbols_pll = msg.get("phase_locked_preview")
                 self.rx_metadata = msg.get("rx_metadata")
                 self.rx_image = msg.get("rx_image")
-                self.rx_decoded_count += 1
+
+                frame_counter = None
+                if isinstance(self.rx_metadata, dict):
+                    frame_counter = self.rx_metadata.get("frame_counter")
+
+                if isinstance(frame_counter, int):
+                    self.rx_decoded_frames.add(frame_counter)
+                    self.rx_decoded_count = len(self.rx_decoded_frames)
+                    self.rx_total_count = max(self.rx_total_count, frame_counter + 1)
+                else:
+                    self.rx_decoded_count += 1
 
                 if self.rx_debug is not None:
                     _refresh_status(

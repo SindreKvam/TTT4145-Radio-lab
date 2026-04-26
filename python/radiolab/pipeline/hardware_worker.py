@@ -101,25 +101,18 @@ class HardwareWorker(Process):
                 time.sleep(0.05)
                 continue
 
-            loop_start_time = time.perf_counter()
-
             # Put receive data in the Rx queue
             try:
                 self.rx_queue.put_nowait(rx_data)
             except Full:
-                logger.error("RX buffer full, dropping package")
-                # self.rx_queue.get()
-                # self.rx_queue.put_nowait(rx_data)
-
-            loop_end_time = time.perf_counter()
-            loop_duration = loop_end_time - loop_start_time
-
-            if loop_duration > self.config.time_to_fill_buffer:
-                logger.warning(
-                    "HardwareWorker Rx loop too slow, "
-                    + f"rx is not continuous {loop_duration * 1e3:.2f} ms "
-                    + f"> {self.config.time_to_fill_buffer * 1e3:.2f} ms."
-                )
+                logger.warning("RX buffer full, dropping oldest package")
+                try:
+                    self.rx_queue.get_nowait()
+                    self.rx_queue.put_nowait(rx_data)
+                except Empty:
+                    pass
+                except Full:
+                    pass
 
     def _tx_loop(self) -> None:
         logger.info("Tx loop started")

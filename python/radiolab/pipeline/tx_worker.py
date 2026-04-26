@@ -1,5 +1,6 @@
 import logging
 import signal
+import time
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -66,7 +67,7 @@ class TxWorker(Process):
             enabled=self.config.scrambler_enabled,
         )
         self.frame_counter = 0
-        self.tx_const_preview_len = 250
+        self.tx_const_preview_len = self.config.tx_constellation_preview_len
 
         rrc, rrc_coeff = rrcosfilter(
             self.config.rrc_span * self.config.samples_per_symbol + 1,
@@ -92,7 +93,7 @@ class TxWorker(Process):
         job = TxJob(payload=None, tag=Tags.IMAGE)
 
         m_bit_image, img_width, img_height = image_to_m_bit(
-            image_path, self.phy.M, scale=0.1
+            image_path, self.phy.M, scale=self.config.tx_static_image_scale
         )
         job.payload = m_bit_image.flatten().astype(int)
         job.metadata = {"img_width": img_width, "img_height": img_height, "channels": 1}
@@ -128,11 +129,16 @@ class TxWorker(Process):
         signal.signal(signal.SIGINT, signal.SIG_IGN)
 
         try:
-            self.camera = CameraSource()
+            self.camera = CameraSource(
+                capture_width=self.config.tx_camera_capture_width,
+                capture_height=self.config.tx_camera_capture_height,
+            )
 
             while not self.stop_event.is_set():
                 try:
-                    job = self._generate_camera_data_job()
+                    job = self._generate_camera_data_job(
+                        image_scale=self.config.tx_camera_image_scale
+                    )
                 except Exception as exc:
                     if self.stop_event.is_set():
                         logger.debug(
@@ -140,6 +146,7 @@ class TxWorker(Process):
                         )
                         break
                     logger.exception(f"Error generating job: {exc}")
+                    time.sleep(self.idle_sleep_s)
                     continue
 
                 try:

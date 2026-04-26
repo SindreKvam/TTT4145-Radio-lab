@@ -41,8 +41,14 @@ class ImageSource(Source):
 
 
 class CameraSource(Source):
-    def __init__(self) -> None:
+    def __init__(
+        self, capture_width: int | None = None, capture_height: int | None = None
+    ) -> None:
         self.camera = cv2.VideoCapture(0)
+        if capture_width is not None and capture_width > 0:
+            self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, int(capture_width))
+        if capture_height is not None and capture_height > 0:
+            self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, int(capture_height))
 
     def read(
         self, num_bits: int = 4, image_scale: float = 0.2
@@ -50,6 +56,8 @@ class CameraSource(Source):
         """Take image with web-camera and return a scaled image"""
 
         ret, img = self.camera.read()
+        if not ret or img is None:
+            raise RuntimeError("Failed to capture image from camera")
         rgb_image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
         return array_image_to_m_bit(rgb_image, num_bits, scale=image_scale)
