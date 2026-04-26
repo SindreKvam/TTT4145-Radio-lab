@@ -1,7 +1,7 @@
 import argparse
 import logging
 import multiprocessing as mp
-from threading import Event
+import time
 
 from pipeline.gui_worker import GuiWorker
 from pipeline.hardware_worker import HardwareWorker
@@ -25,27 +25,64 @@ def main(**kwargs):
     gui_queue = mp.Queue(maxsize=8)
 
     config = Config.default()
-    stop_event = Event()
+    stop_event = mp.Event()
 
-    processes = []
-    processes.append(HardwareWorker(tx_queue, rx_queue, stop_event, config.radio))
-    processes.append(TxWorker(tx_queue, gui_queue, config.phy, stop_event))
-    processes.append(
-        RxWorker(
-            rx_queue,
-            gui_queue,
-            config.phy,
-            stop_event,
-            config.radio.time_to_fill_buffer,
-        )
+    hardware_worker = HardwareWorker(tx_queue, rx_queue, stop_event, config.radio)
+    tx_worker = TxWorker(tx_queue, gui_queue, config.phy, stop_event)
+    rx_worker = RxWorker(
+        rx_queue,
+        gui_queue,
+        config.phy,
+        stop_event,
+        config.radio.time_to_fill_buffer,
     )
-    processes.append(GuiWorker(gui_queue, config, stop_event))
+    gui_worker = GuiWorker(gui_queue, config, stop_event)
+
+    processes = [hardware_worker, tx_worker, rx_worker, gui_worker]
 
     for p in processes:
         p.start()
 
-    for p in processes:
-        p.join()
+    try:
+        while True:
+            if not gui_worker.is_alive():
+                logger.info("GUI worker exited, requesting shutdown")
+                break
+
+            dead_workers = [
+                p for p in (hardware_worker, tx_worker, rx_worker) if not p.is_alive()
+            ]
+            if dead_workers:
+                logger.warning(
+                    "Worker(s) exited unexpectedly: %s",
+                    ", ".join(p.name for p in dead_workers),
+                )
+                break
+
+            time.sleep(0.2)
+
+    except KeyboardInterrupt:
+        logger.info("KeyboardInterrupt received, requesting shutdown")
+
+    finally:
+        stop_event.set()
+
+        for p in processes:
+            p.join(timeout=3.0)
+
+        still_alive = [p for p in processes if p.is_alive()]
+        if still_alive:
+            logger.warning(
+                "Force terminating %d process(es): %s",
+                len(still_alive),
+                ", ".join(p.name for p in still_alive),
+            )
+            for p in still_alive:
+                p.terminate()
+            for p in still_alive:
+                p.join(timeout=1.0)
+
+        logger.info("Shutdown complete")
 
 
 if __name__ == "__main__":

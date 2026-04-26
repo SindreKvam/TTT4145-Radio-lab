@@ -1,4 +1,5 @@
 import logging
+import signal
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -56,7 +57,7 @@ class TxWorker(Process):
         self.stop_event = stop_event
         self.idle_sleep_s = idle_sleep_s
 
-        self.camera = CameraSource()
+        self.camera = None
         self.framer = Framer()
         self.scrambler = PayloadScrambler(
             seed=self.config.scrambler_seed,
@@ -101,6 +102,9 @@ class TxWorker(Process):
     def _generate_camera_data_job(self, image_scale=0.2) -> TxJob:
         """Connect to camera and take image as quickly as possible"""
 
+        if self.camera is None:
+            raise RuntimeError("Camera source is not initialized")
+
         img, img_width, img_height = self.camera.read(
             self.phy.M, image_scale=image_scale
         )
@@ -121,20 +125,55 @@ class TxWorker(Process):
         return job
 
     def run(self) -> None:
-        while not self.stop_event.is_set():
-            try:
-                job = self._generate_camera_data_job()
-            except Exception as exc:
-                logger.exception(f"Error generating job: {exc}")
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
 
-            try:
-                self._handle_job(job)
-            except Exception as exc:
-                logger.exception(f"[{self.name}] Error handling job {job.tag}: {exc}")
+        try:
+            self.camera = CameraSource()
+
+            while not self.stop_event.is_set():
+                try:
+                    job = self._generate_camera_data_job()
+                except Exception as exc:
+                    if self.stop_event.is_set():
+                        logger.debug(
+                            f"Ignoring TX generate error during shutdown: {exc}"
+                        )
+                        break
+                    logger.exception(f"Error generating job: {exc}")
+                    continue
+
+                try:
+                    self._handle_job(job)
+                except Exception as exc:
+                    if self.stop_event.is_set():
+                        logger.debug(f"Ignoring TX handle error during shutdown: {exc}")
+                        break
+                    logger.exception(
+                        f"[{self.name}] Error handling job {job.tag}: {exc}"
+                    )
+        except KeyboardInterrupt:
+            self.stop_event.set()
+        except BaseException as exc:
+            if self.stop_event.is_set():
+                logger.debug(f"Ignoring TX worker exception during shutdown: {exc}")
+            else:
+                logger.exception(f"[{self.name}] Unhandled worker exception: {exc}")
+        finally:
+            if (
+                self.camera is not None
+                and getattr(self.camera, "camera", None) is not None
+            ):
+                try:
+                    self.camera.camera.release()
+                except Exception as exc:
+                    logger.debug(f"Failed to release camera during shutdown: {exc}")
 
     def _handle_job(self, job: TxJob) -> None:
         """Do the actual work of transmitting data"""
         for i in range(job.repeat):
+            if self.stop_event.is_set():
+                return
+
             data = img = job.payload
 
             data = self.scrambler.scramble_symbols(data, self.phy.M)

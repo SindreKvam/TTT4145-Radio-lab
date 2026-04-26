@@ -1,4 +1,5 @@
 import logging
+import signal
 import time
 from multiprocessing import Event, Process
 from multiprocessing.queues import Empty, Full, Queue
@@ -144,6 +145,8 @@ class RxWorker(Process):
 
     def run(self) -> None:
         """"""
+
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
 
         while not self.stop_event.is_set():
             try:
@@ -383,6 +386,9 @@ class RxWorker(Process):
                 )
 
             except Exception as exc:
+                if self.stop_event.is_set():
+                    logger.debug(f"Ignoring RX error during shutdown: {exc}")
+                    break
                 logger.exception(f"Failed while processing Rx data: {exc}")
                 self._emit_rx_debug(
                     seq=seq,

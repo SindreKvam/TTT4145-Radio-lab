@@ -1,4 +1,5 @@
 import logging
+import signal
 import time
 from multiprocessing import Event, Process
 from multiprocessing.queues import Empty, Full, Queue
@@ -26,14 +27,13 @@ class HardwareWorker(Process):
         logger.info(f"{name} starting")
 
         super().__init__(name=name, daemon=True)
-        self.radio = adi.Pluto("usb:")
+        self.radio = None
 
         self.tx_queue = tx_queue
         self.rx_queue = rx_queue
         self.stop_event = stop_event
 
         self.config = config
-        self._configure_adalm_pluto()
 
     def _configure_adalm_pluto(self) -> None:
         """"""
@@ -58,6 +58,11 @@ class HardwareWorker(Process):
     def run(self) -> None:
         """"""
 
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+        self.radio = adi.Pluto("usb:")
+        self._configure_adalm_pluto()
+
         self._thread_stop_event = ThreadEvent()
 
         rx_thread = Thread(target=self._rx_loop, name=f"{self.name}-RX", daemon=True)
@@ -66,14 +71,35 @@ class HardwareWorker(Process):
         rx_thread.start()
         tx_thread.start()
 
-        rx_thread.join()
-        tx_thread.join()
+        try:
+            while not self.stop_event.is_set():
+                time.sleep(0.1)
+        finally:
+            self._thread_stop_event.set()
+
+            rx_thread.join(timeout=2.0)
+            tx_thread.join(timeout=2.0)
+
+            threads_alive = rx_thread.is_alive() or tx_thread.is_alive()
+            if threads_alive:
+                logger.warning(
+                    "Hardware threads still alive during shutdown, skipping radio buffer cleanup"
+                )
+            else:
+                self._cleanup_radio()
 
     def _rx_loop(self) -> None:
         logger.info("Rx loop started")
 
-        while not self._thread_stop_event.is_set():
-            rx_data = self.radio.rx()
+        while not self._thread_stop_event.is_set() and not self.stop_event.is_set():
+            try:
+                rx_data = self.radio.rx()
+            except Exception as exc:
+                if self._thread_stop_event.is_set() or self.stop_event.is_set():
+                    break
+                logger.exception(f"RX loop error: {exc}")
+                time.sleep(0.05)
+                continue
 
             loop_start_time = time.perf_counter()
 
@@ -98,10 +124,36 @@ class HardwareWorker(Process):
     def _tx_loop(self) -> None:
         logger.info("Tx loop started")
 
-        while not self._thread_stop_event.is_set():
+        while not self._thread_stop_event.is_set() and not self.stop_event.is_set():
             try:
                 tx_data = self.tx_queue.get(timeout=0.001)
                 self.radio.tx(tx_data)
 
             except Empty:
                 continue
+            except Exception as exc:
+                if self._thread_stop_event.is_set() or self.stop_event.is_set():
+                    logger.debug(f"Ignoring TX loop error during shutdown: {exc}")
+                    break
+                logger.exception(f"TX loop error: {exc}")
+                time.sleep(0.05)
+
+    def _cleanup_radio(self) -> None:
+        if self.radio is None:
+            return
+
+        destroy_buffer = getattr(self.radio, "tx_destroy_buffer", None)
+        if callable(destroy_buffer):
+            try:
+                destroy_buffer()
+            except Exception as exc:
+                exc_text = str(exc)
+                exc_errno = getattr(exc, "errno", None)
+                if exc_errno == 16 or "errno=16" in exc_text:
+                    logger.debug(
+                        "TX buffer destroy skipped during shutdown: device busy (errno 16)"
+                    )
+                else:
+                    logger.debug(f"Failed to destroy TX buffer during shutdown: {exc}")
+
+        self.radio = None

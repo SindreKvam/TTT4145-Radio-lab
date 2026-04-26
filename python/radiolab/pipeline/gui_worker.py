@@ -1,4 +1,5 @@
 import logging
+import signal
 import sys
 
 # from queue import Empty, Queue
@@ -33,9 +34,16 @@ class GuiWorker(Process):
         self.stop_event = stop_event
 
     def run(self) -> None:
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+
         app = QApplication(sys.argv)
         window = LiveDashboard(self.config, self.gui_queue)
         window.show()
+
+        def request_shutdown():
+            self.stop_event.set()
+
+        app.aboutToQuit.connect(request_shutdown)
 
         def check_shutdown():
             if self.stop_event.is_set():
@@ -45,7 +53,7 @@ class GuiWorker(Process):
         shutdown_timer.timeout.connect(check_shutdown)
         shutdown_timer.start(100)
 
-        sys.exit(app.exec_())
+        app.exec_()
 
 
 class LiveDashboard(QMainWindow):
