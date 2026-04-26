@@ -7,6 +7,7 @@ import numpy as np
 from commpy.filters import rrcosfilter
 from modem import Qam
 
+from radiolab.app.sinks import ImageSink
 from radiolab.config.config import PhyConfig
 from radiolab.link.framer import Framer
 from radiolab.link.scrambler import PayloadScrambler
@@ -44,6 +45,7 @@ class RxWorker(Process):
         self.stop_event = stop_event
         self.max_timeout = max_timeout
         self.framer = Framer()
+        self.image_sink = ImageSink()
         self.scrambler = PayloadScrambler(
             seed=self.config.scrambler_seed,
             polynomial=self.config.scrambler_polynomial,
@@ -308,6 +310,7 @@ class RxWorker(Process):
                 times_ms["demod"] = (demodulate_time - phase_locked_loop_time) * 10e-6
 
                 # Unpack frame and separate metadata and payload
+                decoded_image = None
                 metadata, framed_payload = self.framer.unpack_frame(
                     demodulated_symbols,
                     modulation_order=self.config.modulation_order,
@@ -331,6 +334,9 @@ class RxWorker(Process):
                     logger.info(f"Received metadata: {metadata}")
                     framed_payload = self.scrambler.descramble_symbols(
                         framed_payload, self.config.modulation_order
+                    )
+                    decoded_image = self.image_sink.decode_image(
+                        metadata, framed_payload
                     )
 
                 times_ms["total"] = (time.perf_counter_ns() - start_time) * 10e-6
@@ -397,6 +403,7 @@ class RxWorker(Process):
                             self.config.pll_preamble_length :
                         ][: self.debug_symbol_slice_len],
                         "rx_metadata": metadata,
+                        "rx_image": decoded_image,
                         "rx_payload": framed_payload,
                         # "decoded_data": decoded_data,
                     }

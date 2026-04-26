@@ -295,28 +295,8 @@ class LiveDashboard(QMainWindow):
                 self.rx_symbols_mf = msg.get("matched_filtered_preview")
                 self.rx_symbols_pll = msg.get("phase_locked_preview")
                 self.rx_metadata = msg.get("rx_metadata")
-                rx_payload = msg.get("rx_payload")
+                self.rx_image = msg.get("rx_image")
                 self.rx_decoded_count += 1
-
-                if self.rx_metadata is not None:
-                    expected_len = (
-                        self.rx_metadata["img_width"]
-                        * self.rx_metadata["img_height"]
-                        * self.rx_metadata.get("channels", 3)
-                    )
-                    decoded_data = np.asarray(rx_payload[:expected_len], dtype=int)
-
-                    self.rx_image = np.transpose(
-                        np.reshape(
-                            decoded_data,
-                            (
-                                self.rx_metadata["img_height"],
-                                self.rx_metadata["img_width"],
-                                self.rx_metadata.get("channels", 3),
-                            ),
-                        ),
-                        (1, 0, 2),
-                    )
 
                 if self.rx_debug is not None:
                     _refresh_status(
