@@ -11,8 +11,8 @@ class ModemRx:
         self.filter_coeff = filter_coeff
         self.filter_state = signal.lfiltic(self.filter_coeff, 1, 0)
         self.last_coarse_cfo_omega = 0.0
-        self.k_p = 0.0222
-        self.k_i = 0.00024
+        self.k_p = 0.064
+        self.k_i = 1.024e-3
         self.qam_lut = np.asarray(self.qam.get_lookup_table(), dtype=np.complex64)
         self.pll = Pll(self.k_p, self.k_i)
 
