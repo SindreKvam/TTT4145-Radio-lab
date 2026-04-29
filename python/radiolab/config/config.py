@@ -36,7 +36,7 @@ class RadioConfig:
     sample_rate: int = 10_000_000
     rx_buffer_size: int = 400_000
     rx_lo_hz: int = 2_472_000_000  # Centre of channel 13: 2.472 GHz
-    tx_lo_hz: int = 2_472_000_000  # Between channel 8 and 9: 2.450 GHz
+    tx_lo_hz: int = 2_472_000_000  # Centre of channel 14: 2.484 GHz
     tx_cyclic_buffer: bool = False
     tx_hardwaregain_chan0 = 0
     gain_control_mode_chan0 = (
