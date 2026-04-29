@@ -22,8 +22,8 @@ class parameters:
     oversampling_factor = 8
     symbol_rate = sampling_rate / oversampling_factor
     frequency_offset = -500
-    k_p = 0.0222
-    k_i = 2.4e-4
+    k_p = 0.064
+    k_i = 1.024e-3
 
 
 def open_loop(z: np.ndarray, k_p: float, k_i: float, D: int = 0):
