@@ -55,6 +55,7 @@ class GuiConfig:
     update_rate_ms = 20
     tx_queue_size: int = 8
     rx_queue_size: int = 8
+    control_queue_size: int = 8
 
 
 @dataclass

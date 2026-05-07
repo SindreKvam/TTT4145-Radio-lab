@@ -4,14 +4,21 @@ import sys
 
 # from queue import Empty, Queue
 from multiprocessing import Event, Process
-from multiprocessing.queues import Empty, Queue
+from multiprocessing.queues import Empty, Full, Queue
 
 import numpy as np
 
 # from threading import Event, Thread
 import pyqtgraph as pg
 from PyQt5.QtCore import QTimer
-from PyQt5.QtWidgets import QApplication, QGridLayout, QLabel, QMainWindow, QWidget
+from PyQt5.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QGridLayout,
+    QLabel,
+    QMainWindow,
+    QWidget,
+)
 
 from radiolab.config.config import Config
 
@@ -24,6 +31,8 @@ class GuiWorker(Process):
         self,
         tx_gui_queue: Queue,
         rx_gui_queue: Queue,
+        control_tx_queue: Queue,
+        control_rx_queue: Queue,
         config: Config,
         stop_event: Event,
         name: str = "GuiWorker",
@@ -32,6 +41,8 @@ class GuiWorker(Process):
         super().__init__(name=name, daemon=True)
         self.tx_gui_queue = tx_gui_queue
         self.rx_gui_queue = rx_gui_queue
+        self.control_tx_queue = control_tx_queue
+        self.control_rx_queue = control_rx_queue
         self.config = config
         self.stop_event = stop_event
 
@@ -39,7 +50,13 @@ class GuiWorker(Process):
         signal.signal(signal.SIGINT, signal.SIG_IGN)
 
         app = QApplication(sys.argv)
-        window = LiveDashboard(self.config, self.tx_gui_queue, self.rx_gui_queue)
+        window = LiveDashboard(
+            self.config,
+            self.tx_gui_queue,
+            self.rx_gui_queue,
+            self.control_tx_queue,
+            self.control_rx_queue,
+        )
         window.show()
 
         def request_shutdown():
@@ -61,11 +78,20 @@ class GuiWorker(Process):
 class LiveDashboard(QMainWindow):
     """"""
 
-    def __init__(self, config: Config, tx_gui_queue: Queue, rx_gui_queue: Queue):
+    def __init__(
+        self,
+        config: Config,
+        tx_gui_queue: Queue,
+        rx_gui_queue: Queue,
+        control_tx_queue: Queue,
+        control_rx_queue: Queue,
+    ):
         super().__init__()
         self.config = config
         self.tx_gui_queue = tx_gui_queue
         self.rx_gui_queue = rx_gui_queue
+        self.control_tx_queue = control_tx_queue
+        self.control_rx_queue = control_rx_queue
 
         self.tx_const_symbols = None
         self.rx_symbols_mf = None
@@ -108,7 +134,12 @@ class LiveDashboard(QMainWindow):
 
         self.status_label = QLabel("Initializing...")
         self.status_label.setWordWrap(True)
-        layout.addWidget(self.status_label, 0, 0, 1, 3)
+        layout.addWidget(self.status_label, 0, 0, 1, 2)
+
+        self.scrambler_toggle = QCheckBox("Scrambler (LFSR)")
+        self.scrambler_toggle.setChecked(self.config.phy.scrambler_enabled)
+        self.scrambler_toggle.stateChanged.connect(self._on_scrambler_toggle)
+        layout.addWidget(self.scrambler_toggle, 0, 2)
 
         self._create_plots(layout)
 
@@ -257,6 +288,28 @@ class LiveDashboard(QMainWindow):
 
         if self.rx_image is not None:
             self.rx_image_view.setImage(self.rx_image)
+
+    def _on_scrambler_toggle(self, state: int) -> None:
+        value = bool(state)
+        msg = {
+            "type": "control",
+            "target": "scrambler_enabled",
+            "value": value,
+        }
+        dropped = False
+
+        try:
+            self.control_tx_queue.put_nowait(msg)
+        except Full:
+            dropped = True
+
+        try:
+            self.control_rx_queue.put_nowait(msg)
+        except Full:
+            dropped = True
+
+        if dropped:
+            logger.warning("Control queue full, dropping scrambler toggle")
 
     def _process_message(self, msg):
         """Process message from the queue"""

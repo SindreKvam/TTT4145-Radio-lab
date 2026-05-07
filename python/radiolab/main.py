@@ -26,18 +26,34 @@ def main(**kwargs):
     config = Config.default()
     gui_tx_queue = mp.Queue(maxsize=config.gui.tx_queue_size)
     gui_rx_queue = mp.Queue(maxsize=config.gui.rx_queue_size)
+    control_tx_queue = mp.Queue(maxsize=config.gui.control_queue_size)
+    control_rx_queue = mp.Queue(maxsize=config.gui.control_queue_size)
     stop_event = mp.Event()
 
     hardware_worker = HardwareWorker(tx_queue, rx_queue, stop_event, config.radio)
-    tx_worker = TxWorker(tx_queue, gui_tx_queue, config.phy, stop_event)
+    tx_worker = TxWorker(
+        tx_queue,
+        gui_tx_queue,
+        control_tx_queue,
+        config.phy,
+        stop_event,
+    )
     rx_worker = RxWorker(
         rx_queue,
         gui_rx_queue,
+        control_rx_queue,
         config.phy,
         stop_event,
         config.radio.time_to_fill_buffer,
     )
-    gui_worker = GuiWorker(gui_tx_queue, gui_rx_queue, config, stop_event)
+    gui_worker = GuiWorker(
+        gui_tx_queue,
+        gui_rx_queue,
+        control_tx_queue,
+        control_rx_queue,
+        config,
+        stop_event,
+    )
 
     processes = [hardware_worker, tx_worker, rx_worker, gui_worker]
 

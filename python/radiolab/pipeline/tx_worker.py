@@ -6,7 +6,7 @@ from enum import StrEnum
 
 # from queue import Full, Queue
 from multiprocessing import Event, Process
-from multiprocessing.queues import Full, Queue
+from multiprocessing.queues import Empty, Full, Queue
 
 # from threading import Event, Thread
 import numpy as np
@@ -42,6 +42,7 @@ class TxWorker(Process):
         self,
         tx_queue: Queue,
         gui_queue: Queue,
+        control_queue: Queue,
         config: PhyConfig,
         stop_event: Event,
         idle_sleep_s: float = 0.01,
@@ -54,6 +55,7 @@ class TxWorker(Process):
         super().__init__(name=name, daemon=True)
         self.tx_queue = tx_queue
         self.gui_queue = gui_queue
+        self.control_queue = control_queue
         self.config = config
         self.stop_event = stop_event
         self.idle_sleep_s = idle_sleep_s
@@ -135,6 +137,7 @@ class TxWorker(Process):
             )
 
             while not self.stop_event.is_set():
+                self._drain_control_queue()
                 try:
                     job = self._generate_camera_data_job(
                         image_scale=self.config.tx_camera_image_scale
@@ -177,9 +180,12 @@ class TxWorker(Process):
 
     def _handle_job(self, job: TxJob) -> None:
         """Do the actual work of transmitting data"""
+        self._drain_control_queue()
         for i in range(job.repeat):
             if self.stop_event.is_set():
                 return
+
+            self._drain_control_queue()
 
             data = img = job.payload
 
@@ -235,3 +241,18 @@ class TxWorker(Process):
 
             # Update frame counter only if frame actually was transmitted
             self.frame_counter = (self.frame_counter + 1) & 0xFFFFFFFF
+
+    def _drain_control_queue(self) -> None:
+        while True:
+            try:
+                msg = self.control_queue.get_nowait()
+            except Empty:
+                break
+
+            if msg.get("type") != "control":
+                continue
+
+            if msg.get("target") == "scrambler_enabled":
+                value = msg.get("value")
+                if isinstance(value, bool):
+                    self.scrambler.enabled = value

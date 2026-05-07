@@ -30,6 +30,7 @@ class RxWorker(Process):
         self,
         rx_queue: Queue,
         gui_queue: Queue,
+        control_queue: Queue,
         config: PhyConfig,
         stop_event: Event,
         max_timeout: float,
@@ -42,6 +43,7 @@ class RxWorker(Process):
         super().__init__(name=name, daemon=True)
         self.rx_queue = rx_queue
         self.gui_queue = gui_queue
+        self.control_queue = control_queue
         self.config = config
         self.stop_event = stop_event
         self.max_timeout = max_timeout
@@ -149,6 +151,7 @@ class RxWorker(Process):
         signal.signal(signal.SIGINT, signal.SIG_IGN)
 
         while not self.stop_event.is_set():
+            self._drain_control_queue()
             try:
                 rx_data = self.rx_queue.get(timeout=self.max_timeout)
             except Empty:
@@ -156,6 +159,7 @@ class RxWorker(Process):
                 continue
 
             try:
+                self._drain_control_queue()
                 seq = self.rx_seq
                 self.rx_seq += 1
 
@@ -399,6 +403,7 @@ class RxWorker(Process):
                 continue
 
             try:
+                self._drain_control_queue()
                 self.gui_queue.put_nowait(
                     {
                         "type": "rx_update",
@@ -417,3 +422,18 @@ class RxWorker(Process):
             except Full:
                 logger.warning("Dropping RX GUI frame")
                 pass
+
+    def _drain_control_queue(self) -> None:
+        while True:
+            try:
+                msg = self.control_queue.get_nowait()
+            except Empty:
+                break
+
+            if msg.get("type") != "control":
+                continue
+
+            if msg.get("target") == "scrambler_enabled":
+                value = msg.get("value")
+                if isinstance(value, bool):
+                    self.scrambler.enabled = value
