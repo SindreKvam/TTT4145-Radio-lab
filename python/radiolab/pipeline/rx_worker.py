@@ -84,39 +84,36 @@ class RxWorker(Process):
 
         self.header_qam = header_qam
 
+        self.phy = ModemRx(qam, self.config.samples_per_symbol, rrc_coeff)
+        self.header_qam = header_qam
+        self.payload_qam = qam
+        self.rrc_coeff = rrc_coeff
+        self._rebuild_codeword_reference()
+
+    def _rebuild_codeword_reference(self) -> None:
         try:
-            # Get codeword, and simulate that it has gone through modulation
-            # Upsampling, pulse shaping, then down-sampled
             code = _get_codeword(
                 self.config.codeword_length, self.config.header_modulation_order
             )
             modulated_code = np.asarray(
                 self.header_qam.modulate_array(code), dtype=complex
             )
-
             upsampled_code = np.zeros_like(
                 modulated_code,
                 shape=(len(modulated_code) * self.config.samples_per_symbol,),
             )
             upsampled_code[:: self.config.samples_per_symbol] = modulated_code
-
-            # Send the code through the pulse shaping and matched filter
-            pulse_shaped_code = np.convolve(upsampled_code, rrc_coeff, mode="same")
+            pulse_shaped_code = np.convolve(upsampled_code, self.rrc_coeff, mode="same")
             matched_filtered_code = np.convolve(
-                pulse_shaped_code, rrc_coeff, mode="same"
+                pulse_shaped_code, self.rrc_coeff, mode="same"
             )
             self.code_os = matched_filtered_code
             self.code_sym = matched_filtered_code[:: self.config.samples_per_symbol]
             self.coarse_corr_threshold = (
                 self.config.codeword_corr_threshold * self.config.samples_per_symbol
             )
-
         except Exception as exc:
-            logger.exception(
-                f"Failed to create codeword used for checking valid data: {exc}"
-            )
-
-        self.phy = ModemRx(qam, self.config.samples_per_symbol, rrc_coeff)
+            logger.warning("Failed to rebuild codeword reference: %s", exc)
 
     def _emit_rx_debug(
         self,
@@ -473,3 +470,24 @@ class RxWorker(Process):
                 value = msg.get("value")
                 if isinstance(value, bool):
                     self.scrambler.enabled = value
+            elif msg.get("target") == "modulation_order":
+                value = msg.get("value")
+                if not isinstance(value, int):
+                    continue
+                if value <= 0:
+                    continue
+
+                try:
+                    qam = Qam(value)
+                except Exception as exc:
+                    logger.warning("Failed to update modulation order: %s", exc)
+                    continue
+
+                self.config.modulation_order = value
+                self.payload_qam = qam
+                self.phy = ModemRx(
+                    qam,
+                    self.config.samples_per_symbol,
+                    self.rrc_coeff,
+                )
+                self._rebuild_codeword_reference()

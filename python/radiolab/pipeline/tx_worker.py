@@ -96,6 +96,8 @@ class TxWorker(Process):
             rrc_coeff,
         )
         self.header_qam = header_qam
+        self.payload_qam = qam
+        self.rrc_coeff = rrc_coeff
 
     def _generate_image_data_job(self) -> TxJob:
         """Send constant image stream"""
@@ -197,7 +199,9 @@ class TxWorker(Process):
 
             data = img = job.payload
 
-            data = self.scrambler.scramble_symbols(data, self.phy.M)
+            data = self.scrambler.scramble_symbols(
+                data, self.config.modulation_order
+            )
 
             header_symbols = self.framer.pack_header(
                 metadata=job.metadata,
@@ -209,7 +213,9 @@ class TxWorker(Process):
             header_complex = np.asarray(
                 self.header_qam.modulate_array(header_symbols), dtype=complex
             )
-            payload_complex = self.phy.modulate_payload(data)
+            payload_complex = np.asarray(
+                self.payload_qam.modulate_array(data), dtype=complex
+            )
             payload = np.concatenate((header_complex, payload_complex))
 
             data = self.phy.add_pll_preamble(
@@ -276,3 +282,23 @@ class TxWorker(Process):
                 value = msg.get("value")
                 if isinstance(value, bool):
                     self.scrambler.enabled = value
+            elif msg.get("target") == "modulation_order":
+                value = msg.get("value")
+                if not isinstance(value, int):
+                    continue
+                if value <= 0:
+                    continue
+
+                try:
+                    qam = Qam(value)
+                except Exception as exc:
+                    logger.warning("Failed to update modulation order: %s", exc)
+                    continue
+
+                self.config.modulation_order = value
+                self.payload_qam = qam
+                self.phy = ModemTx(
+                    qam,
+                    self.config.samples_per_symbol,
+                    self.rrc_coeff,
+                )

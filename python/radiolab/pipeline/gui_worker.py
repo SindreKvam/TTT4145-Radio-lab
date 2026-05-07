@@ -14,6 +14,7 @@ from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import (
     QApplication,
     QCheckBox,
+    QComboBox,
     QGridLayout,
     QLabel,
     QMainWindow,
@@ -126,6 +127,7 @@ class LiveDashboard(QMainWindow):
         layout.setColumnStretch(0, 1)
         layout.setColumnStretch(1, 1)
         layout.setColumnStretch(2, 1)
+        layout.setColumnStretch(3, 0)
         layout.setRowStretch(0, 0)
         layout.setRowStretch(1, 1)
         layout.setRowStretch(2, 1)
@@ -140,6 +142,20 @@ class LiveDashboard(QMainWindow):
         self.scrambler_toggle.setChecked(self.config.phy.scrambler_enabled)
         self.scrambler_toggle.stateChanged.connect(self._on_scrambler_toggle)
         layout.addWidget(self.scrambler_toggle, 0, 2)
+
+        self.modulation_combo = QComboBox()
+        self.modulation_combo.setToolTip("Payload modulation order")
+        modulation_options = [4, 16, 64, 256]
+        if self.config.phy.modulation_order not in modulation_options:
+            modulation_options.append(self.config.phy.modulation_order)
+            modulation_options.sort()
+        for modulation in modulation_options:
+            self.modulation_combo.addItem(f"{modulation}-QAM", modulation)
+        current_index = self.modulation_combo.findData(self.config.phy.modulation_order)
+        if current_index >= 0:
+            self.modulation_combo.setCurrentIndex(current_index)
+        self.modulation_combo.currentIndexChanged.connect(self._on_modulation_change)
+        layout.addWidget(self.modulation_combo, 0, 3)
 
         self._create_plots(layout)
 
@@ -310,6 +326,31 @@ class LiveDashboard(QMainWindow):
 
         if dropped:
             logger.warning("Control queue full, dropping scrambler toggle")
+
+    def _on_modulation_change(self, index: int) -> None:
+        value = self.modulation_combo.itemData(index)
+        if value is None:
+            return
+
+        msg = {
+            "type": "control",
+            "target": "modulation_order",
+            "value": int(value),
+        }
+        dropped = False
+
+        try:
+            self.control_tx_queue.put_nowait(msg)
+        except Full:
+            dropped = True
+
+        try:
+            self.control_rx_queue.put_nowait(msg)
+        except Full:
+            dropped = True
+
+        if dropped:
+            logger.warning("Control queue full, dropping modulation change")
 
     def _process_message(self, msg):
         """Process message from the queue"""
