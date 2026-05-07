@@ -17,7 +17,7 @@ from radiolab.app.sources import CameraSource, image_path, image_to_m_bit
 from radiolab.config.config import PhyConfig
 from radiolab.link.framer import Framer
 from radiolab.link.scrambler import PayloadScrambler
-from radiolab.phy.tx import ModemTx
+from radiolab.phy.tx import NASA_CODEWORDS, ModemTx, int_to_m_bit_chunks
 
 logger = logging.getLogger(__name__)
 
@@ -82,12 +82,20 @@ class TxWorker(Process):
             qam = Qam(self.config.modulation_order)
         except Exception as exc:
             logger.exception(f"Failed to implement Cpp methods: {exc}")
+            raise
+
+        try:
+            header_qam = Qam(self.config.header_modulation_order)
+        except Exception as exc:
+            logger.exception(f"Failed to implement header QAM: {exc}")
+            raise
 
         self.phy = ModemTx(
             qam,
             self.config.samples_per_symbol,
             rrc_coeff,
         )
+        self.header_qam = header_qam
 
     def _generate_image_data_job(self) -> TxJob:
         """Send constant image stream"""
@@ -191,19 +199,31 @@ class TxWorker(Process):
 
             data = self.scrambler.scramble_symbols(data, self.phy.M)
 
-            data = self.framer.pack_frame(
-                data,
+            header_symbols = self.framer.pack_header(
                 metadata=job.metadata,
-                modulation_order=self.phy.M,
+                payload_symbol_count=int(len(data)),
+                modulation_order=self.config.header_modulation_order,
                 frame_counter=self.frame_counter,
             )
 
-            payload = self.phy.modulate_payload(data)
+            header_complex = np.asarray(
+                self.header_qam.modulate_array(header_symbols), dtype=complex
+            )
+            payload_complex = self.phy.modulate_payload(data)
+            payload = np.concatenate((header_complex, payload_complex))
 
             data = self.phy.add_pll_preamble(
                 payload, preamble_length=self.config.pll_preamble_length
             )
-            data = self.phy.add_modulated_codeword(data, self.config.codeword_length)
+            codeword_symbols = int_to_m_bit_chunks(
+                NASA_CODEWORDS[self.config.codeword_length],
+                self.config.codeword_length,
+                int(np.log2(self.config.header_modulation_order)),
+            )
+            codeword_complex = np.asarray(
+                self.header_qam.modulate_array(codeword_symbols), dtype=complex
+            )
+            data = np.concatenate((codeword_complex, data))
             data = self.phy.upsample(data)
             data = self.phy.pulse_shape(data)
 

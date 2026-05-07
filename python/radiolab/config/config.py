@@ -19,6 +19,7 @@ class PhyConfig:
     scrambler_seed: int = 0x7F
     scrambler_polynomial: int = 0x89
     scrambler_width: int = 7
+    header_modulation_order: int = 4
 
     tx_static_image_scale: float = 0.1
     tx_camera_image_scale: float = 0.4

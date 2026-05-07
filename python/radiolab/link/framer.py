@@ -43,6 +43,24 @@ class Framer:
 
         return np.concatenate((header_symbols.astype(int), payload_symbols.astype(int)))
 
+    def pack_header(
+        self,
+        metadata: dict,
+        payload_symbol_count: int,
+        modulation_order: int,
+        frame_counter: int,
+    ) -> np.ndarray:
+        header_words = self._build_header_words(
+            metadata,
+            payload_symbol_count=payload_symbol_count,
+            modulation_order=modulation_order,
+            frame_counter=frame_counter,
+        )
+        coded_header_words = np.asarray(
+            self.hamming.encode_words(header_words), dtype=np.uint16
+        )
+        return self._words_to_symbols(coded_header_words, modulation_order)
+
     def unpack_frame(
         self,
         received_symbols: np.ndarray,
@@ -80,6 +98,33 @@ class Framer:
 
         payload = np.asarray(received_symbols[payload_start:payload_stop], dtype=int)
         return metadata, payload
+
+    def unpack_header(
+        self, received_symbols: np.ndarray, modulation_order: int
+    ) -> tuple[dict, int] | tuple[None, None]:
+        bits_per_symbol = int(np.log2(modulation_order))
+        header_symbol_count = int(np.ceil(self.HEADER_BITS / bits_per_symbol))
+
+        if len(received_symbols) < header_symbol_count:
+            return None, None
+
+        header_symbols = np.asarray(
+            received_symbols[:header_symbol_count], dtype=np.uint16
+        )
+        header_bits = self._symbols_to_bits(
+            header_symbols, bits_per_symbol, self.HEADER_BITS
+        )
+        packed_bytes = np.packbits(header_bits, bitorder="big").tobytes()
+        coded_words = np.frombuffer(packed_bytes, dtype=">u2").astype(np.uint16)
+
+        decoded_words = np.asarray(
+            self.hamming.decode_words(coded_words), dtype=np.uint16
+        )
+        metadata = self._parse_header_words(decoded_words)
+        if metadata is None:
+            return None, None
+
+        return metadata, header_symbol_count
 
     def _build_header_words(
         self,

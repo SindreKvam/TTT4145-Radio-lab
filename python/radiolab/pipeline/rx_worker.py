@@ -74,14 +74,25 @@ class RxWorker(Process):
             qam = Qam(self.config.modulation_order)
         except Exception as exc:
             logger.exception(f"Failed to implement Cpp methods: {exc}")
+            raise
+
+        try:
+            header_qam = Qam(self.config.header_modulation_order)
+        except Exception as exc:
+            logger.exception(f"Failed to implement header QAM: {exc}")
+            raise
+
+        self.header_qam = header_qam
 
         try:
             # Get codeword, and simulate that it has gone through modulation
             # Upsampling, pulse shaping, then down-sampled
             code = _get_codeword(
-                self.config.codeword_length, self.config.modulation_order
+                self.config.codeword_length, self.config.header_modulation_order
             )
-            modulated_code = np.asarray(qam.modulate_array(code), dtype=complex)
+            modulated_code = np.asarray(
+                self.header_qam.modulate_array(code), dtype=complex
+            )
 
             upsampled_code = np.zeros_like(
                 modulated_code,
@@ -307,11 +318,36 @@ class RxWorker(Process):
                 times_ms["pll"] = (phase_locked_loop_time - agc_time) * 10e-6
 
                 # Demodulate data
-                demodulated_symbols = np.asarray(
-                    self.phy.qam.demodulate_array(
-                        phase_locked_data[self.config.pll_preamble_length :]
-                    ),
-                    dtype=int,
+                payload_input = phase_locked_data[self.config.pll_preamble_length :]
+                header_symbols = np.asarray(
+                    self.header_qam.demodulate_array(payload_input), dtype=int
+                )
+                header_metadata, header_symbol_count = self.framer.unpack_header(
+                    header_symbols,
+                    self.config.header_modulation_order,
+                )
+                if header_metadata is None:
+                    times_ms["total"] = (time.perf_counter_ns() - start_time) * 10e-6
+                    if seq % self.debug_plot_every_n == 0:
+                        self._emit_rx_debug_plot(
+                            seq=seq,
+                            plot="correlation",
+                            data=correlation[: self.debug_corr_slice_len],
+                        )
+                    self._emit_rx_debug(
+                        seq=seq,
+                        ok=False,
+                        reason="header_decode_failed",
+                        times_ms=times_ms,
+                    )
+                    continue
+
+                payload_complex = payload_input[header_symbol_count:]
+                payload_symbols = np.asarray(
+                    self.phy.qam.demodulate_array(payload_complex), dtype=int
+                )
+                demodulated_symbols = np.concatenate(
+                    (header_symbols[:header_symbol_count], payload_symbols)
                 )
                 demodulate_time = time.perf_counter_ns()
                 times_ms["demod"] = (demodulate_time - phase_locked_loop_time) * 10e-6
@@ -320,7 +356,7 @@ class RxWorker(Process):
                 decoded_image = None
                 metadata, framed_payload = self.framer.unpack_frame(
                     demodulated_symbols,
-                    modulation_order=self.config.modulation_order,
+                    modulation_order=self.config.header_modulation_order,
                 )
                 if metadata is None:
                     times_ms["total"] = (time.perf_counter_ns() - start_time) * 10e-6
