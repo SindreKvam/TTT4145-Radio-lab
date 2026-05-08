@@ -16,9 +16,9 @@ class PhyConfig:
     rrc_span: int = 10
 
     scrambler_enabled: bool = True
-    scrambler_seed: int = 0x7F
-    scrambler_polynomial: int = 0x89
-    scrambler_width: int = 7
+    scrambler_seed: int = 0xFFFF
+    scrambler_polynomial: int = 0xD00B
+    scrambler_width: int = 16
     header_modulation_order: int = 4
 
     tx_static_image_scale: float = 0.1
