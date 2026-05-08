@@ -7,7 +7,7 @@ class PhyConfig:
     """Configurations for PHY layer"""
 
     modulation_order: int = 16
-    samples_per_symbol: int = 8  # sps
+    samples_per_symbol: int = 4  # sps
     pll_preamble_length: int = 600
     codeword_length: int = 64
     codeword_corr_threshold: int = 800  # 800 for 4-QAM
