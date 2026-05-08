@@ -100,6 +100,8 @@ class LiveDashboard(QMainWindow):
         self.rx_correlation = None
         self.rx_pll_error = None
         self.rx_pll_theta = None
+        self.rx_eye_pre_ted = None
+        self.rx_eye_post_ted = None
         self.tx_image = None
         self.rx_image = None
         self.rx_metadata = None
@@ -127,12 +129,12 @@ class LiveDashboard(QMainWindow):
         layout.setColumnStretch(0, 1)
         layout.setColumnStretch(1, 1)
         layout.setColumnStretch(2, 1)
-        layout.setColumnStretch(3, 0)
+        layout.setColumnStretch(3, 1)
         layout.setRowStretch(0, 0)
         layout.setRowStretch(1, 1)
         layout.setRowStretch(2, 1)
         layout.setRowStretch(3, 1)
-        layout.setRowStretch(4, 1)
+        layout.setRowStretch(4, 0)
 
         self.status_label = QLabel("Initializing...")
         self.status_label.setWordWrap(True)
@@ -196,6 +198,50 @@ class LiveDashboard(QMainWindow):
         self.rx_const_pll_plot.setYRange(-1.2, 1.2, padding=0)
         layout.addWidget(self.rx_const_pll_plot, 1, 2)
 
+        self.rx_eye_pre_plot = pg.PlotWidget(title="RX Eye Diagram (pre-TED)")
+        self.rx_eye_pre_plot.setLabel("bottom", "Sample index")
+        self.rx_eye_pre_plot.setLabel("left", "Amplitude")
+        self.rx_eye_pre_plot.addLegend(offset=(10, 10))
+        self.rx_eye_pre_i_curve = self.rx_eye_pre_plot.plot(
+            pen=pg.mkPen(color=(100, 180, 255, 45), width=1),
+            name="I",
+        )
+        self.rx_eye_pre_q_curve = self.rx_eye_pre_plot.plot(
+            pen=pg.mkPen(color=(255, 170, 100, 45), width=1),
+            name="Q",
+        )
+        self.rx_eye_pre_center_line = pg.InfiniteLine(
+            pos=self.config.phy.samples_per_symbol,
+            angle=90,
+            pen=pg.mkPen(
+                color=(240, 240, 240, 180), width=1, style=pg.QtCore.Qt.DashLine
+            ),
+        )
+        self.rx_eye_pre_plot.addItem(self.rx_eye_pre_center_line)
+        layout.addWidget(self.rx_eye_pre_plot, 1, 3)
+
+        self.rx_eye_post_plot = pg.PlotWidget(title="RX Eye Diagram (post-TED)")
+        self.rx_eye_post_plot.setLabel("bottom", "Sample index")
+        self.rx_eye_post_plot.setLabel("left", "Amplitude")
+        self.rx_eye_post_plot.addLegend(offset=(10, 10))
+        self.rx_eye_post_i_curve = self.rx_eye_post_plot.plot(
+            pen=pg.mkPen(color=(80, 255, 140, 140), width=1),
+            name="I",
+        )
+        self.rx_eye_post_q_curve = self.rx_eye_post_plot.plot(
+            pen=pg.mkPen(color=(255, 90, 90, 140), width=1),
+            name="Q",
+        )
+        self.rx_eye_post_center_line = pg.InfiniteLine(
+            pos=self.config.phy.samples_per_symbol,
+            angle=90,
+            pen=pg.mkPen(
+                color=(240, 240, 240, 180), width=1, style=pg.QtCore.Qt.DashLine
+            ),
+        )
+        self.rx_eye_post_plot.addItem(self.rx_eye_post_center_line)
+        layout.addWidget(self.rx_eye_post_plot, 2, 3)
+
         # Rx Correlation plot
         self.rx_correlation_plot = pg.PlotWidget(title="Rx Correlation data")
         # self.rx_correlation_plot.setAspectLocked(True)
@@ -209,13 +255,13 @@ class LiveDashboard(QMainWindow):
         self.tx_image_view.ui.roiBtn.hide()
         self.tx_image_view.ui.menuBtn.hide()
         self.tx_image_view.setWindowTitle("Transmitted image")
-        layout.addWidget(self.tx_image_view, 4, 0)
+        layout.addWidget(self.tx_image_view, 3, 0)
 
         self.rx_image_view = pg.ImageView()
         self.rx_image_view.ui.roiBtn.hide()
         self.rx_image_view.ui.menuBtn.hide()
         self.rx_image_view.setWindowTitle("Received image")
-        layout.addWidget(self.rx_image_view, 4, 1)
+        layout.addWidget(self.rx_image_view, 3, 1)
 
         # PLL phase error plot
         self.rx_pll_error_plot = pg.PlotWidget(title="RX PLL Phase Error")
@@ -291,6 +337,42 @@ class LiveDashboard(QMainWindow):
                 x=np.arange(0, len(self.rx_pll_theta), 1),
                 y=self.rx_pll_theta,
             )
+
+        if self.rx_eye_pre_ted is not None:
+            eye = self.rx_eye_pre_ted
+            win_len = eye.shape[1]
+            x_base = np.arange(win_len)
+            x = np.concatenate(
+                [np.concatenate((x_base, [np.nan])) for _ in range(eye.shape[0])]
+            )
+            y_i = np.concatenate(
+                [np.concatenate((trace.real, [np.nan])) for trace in eye]
+            )
+            y_q = np.concatenate(
+                [np.concatenate((trace.imag, [np.nan])) for trace in eye]
+            )
+
+            self.rx_eye_pre_i_curve.setData(x=x, y=y_i, connect="finite")
+            self.rx_eye_pre_q_curve.setData(x=x, y=y_q, connect="finite")
+            self.rx_eye_pre_center_line.setValue(self.config.phy.samples_per_symbol)
+
+        if self.rx_eye_post_ted is not None:
+            eye = self.rx_eye_post_ted
+            win_len = eye.shape[1]
+            x_base = np.arange(win_len)
+            x = np.concatenate(
+                [np.concatenate((x_base, [np.nan])) for _ in range(eye.shape[0])]
+            )
+            y_i = np.concatenate(
+                [np.concatenate((trace.real, [np.nan])) for trace in eye]
+            )
+            y_q = np.concatenate(
+                [np.concatenate((trace.imag, [np.nan])) for trace in eye]
+            )
+
+            self.rx_eye_post_i_curve.setData(x=x, y=y_i, connect="finite")
+            self.rx_eye_post_q_curve.setData(x=x, y=y_q, connect="finite")
+            self.rx_eye_post_center_line.setValue(self.config.phy.samples_per_symbol)
 
         # Update Tx constellation
         if self.tx_const_symbols is not None:
@@ -407,6 +489,10 @@ class LiveDashboard(QMainWindow):
                     self.rx_pll_error = data
                 elif plot == "pll_theta":
                     self.rx_pll_theta = data
+                elif plot == "eye_pre_ted":
+                    self.rx_eye_pre_ted = np.asarray(data)
+                elif plot == "eye_post_ted":
+                    self.rx_eye_post_ted = np.asarray(data)
 
             case "rx_update":
                 # Keep rx_debug correlation as primary for diagnostics.

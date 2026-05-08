@@ -1,6 +1,7 @@
 import logging
 import signal
 import time
+from collections import OrderedDict
 from multiprocessing import Event, Process
 from multiprocessing.queues import Empty, Full, Queue
 
@@ -62,6 +63,10 @@ class RxWorker(Process):
         self.debug_symbol_slice_len = 500
         self.debug_success_every_n = 10
         self.debug_plot_every_n = 5
+        self.debug_eye_span_symbols = 2
+        self.debug_eye_max_traces = 120
+        self.debug_max_gui_messages_per_frame = 4
+        self.debug_eye_every_n = 2
 
         rrc, rrc_coeff = rrcosfilter(
             self.config.rrc_span * self.config.samples_per_symbol + 1,
@@ -122,6 +127,7 @@ class RxWorker(Process):
         reason: str,
         times_ms: dict,
         metadata: dict | None = None,
+        outbox: list[dict] | None = None,
     ) -> None:
         msg = {
             "type": "rx_debug",
@@ -136,22 +142,114 @@ class RxWorker(Process):
             },
         }
 
-        try:
-            self.gui_queue.put_nowait(msg)
-        except Full:
-            logger.warning("Dropping RX debug frame")
+        if outbox is not None:
+            outbox.append(msg)
+            return
 
-    def _emit_rx_debug_plot(self, seq: int, plot: str, data: np.ndarray) -> None:
+        self._send_gui_message(msg, high_priority=False)
+
+    def _emit_rx_debug_plot(
+        self,
+        seq: int,
+        plot: str,
+        data: np.ndarray,
+        outbox: list[dict] | None = None,
+    ) -> None:
         msg = {
             "type": "rx_debug_plot",
             "seq": seq,
             "plot": plot,
             "data": data,
         }
+
+        if outbox is not None:
+            outbox.append(msg)
+            return
+
+        self._send_gui_message(msg, high_priority=False)
+
+    def _send_gui_message(self, msg: dict, high_priority: bool) -> bool:
         try:
             self.gui_queue.put_nowait(msg)
+            return True
         except Full:
-            logger.warning("Dropping RX debug plot frame")
+            if not high_priority:
+                return False
+
+            try:
+                self.gui_queue.get_nowait()
+                self.gui_queue.put_nowait(msg)
+                return True
+            except (Empty, Full):
+                return False
+
+    def _flush_debug_outbox(self, outbox: list[dict]) -> None:
+        if len(outbox) == 0:
+            return
+
+        latest_debug = None
+        latest_plots: OrderedDict[str, dict] = OrderedDict()
+
+        for msg in outbox:
+            msg_type = msg.get("type")
+            if msg_type == "rx_debug":
+                latest_debug = msg
+            elif msg_type == "rx_debug_plot":
+                plot_name = msg.get("plot", "")
+                latest_plots[plot_name] = msg
+
+        pending = []
+        if latest_debug is not None:
+            pending.append(latest_debug)
+
+        prioritized_plot_names = [
+            "pll_error",
+            "pll_theta",
+            "correlation",
+            "eye_post_ted",
+            "eye_pre_ted",
+        ]
+        for plot_name in prioritized_plot_names:
+            msg = latest_plots.get(plot_name)
+            if msg is not None:
+                pending.append(msg)
+
+        for plot_name, msg in latest_plots.items():
+            if plot_name in prioritized_plot_names:
+                continue
+            pending.append(msg)
+
+        if len(pending) > self.debug_max_gui_messages_per_frame:
+            pending = pending[: self.debug_max_gui_messages_per_frame]
+
+        for msg in pending:
+            self._send_gui_message(msg, high_priority=False)
+
+    def _build_eye_traces(self, samples: np.ndarray) -> np.ndarray | None:
+        sps = self.config.samples_per_symbol
+        win_len = self.debug_eye_span_symbols * sps
+        if samples is None or len(samples) < win_len or sps <= 0:
+            return None
+
+        start_max = len(samples) - win_len
+        starts = np.arange(0, start_max + 1, sps, dtype=int)
+        if starts.size == 0:
+            return None
+
+        if starts.size > self.debug_eye_max_traces:
+            idx = np.linspace(
+                0,
+                starts.size - 1,
+                num=self.debug_eye_max_traces,
+                dtype=int,
+            )
+            starts = starts[idx]
+
+        eye = np.asarray([samples[start : start + win_len] for start in starts])
+        if eye.size == 0:
+            return None
+
+        return eye
 
     def run(self) -> None:
         """"""
@@ -170,6 +268,9 @@ class RxWorker(Process):
                 self._drain_control_queue()
                 seq = self.rx_seq
                 self.rx_seq += 1
+                debug_outbox = []
+                eye_traces_pre = None
+                eye_traces_post = None
 
                 start_time = time.perf_counter_ns()
                 times_ms = {
@@ -220,7 +321,9 @@ class RxWorker(Process):
                             ok=False,
                             reason="coarse_no_peak",
                             times_ms=times_ms,
+                            outbox=debug_outbox,
                         )
+                    self._flush_debug_outbox(debug_outbox)
                     continue
 
                 coarse_start_index = self.phy.peak_to_start(
@@ -231,11 +334,15 @@ class RxWorker(Process):
                 ted_margin = self.ted_margin_symbols * self.config.samples_per_symbol
                 ted_start = max(0, coarse_start_index - ted_margin)
                 ted_input = matched_filtered_data[ted_start:]
+                eye_traces_pre = self._build_eye_traces(ted_input)
 
                 # Do timing error detection (downsampling)
                 matched_filtered_data = self.phy.recover_timing(ted_input)
                 timing_recovery_time = time.perf_counter_ns()
                 times_ms["ted"] = (timing_recovery_time - coarse_detect_time) * 10e-6
+                ted_offset = int(getattr(self.phy, "last_timing_offset", 0))
+                ted_aligned = ted_input[ted_offset:]
+                eye_traces_post = self._build_eye_traces(ted_aligned)
 
                 # Fine correlation to do symbol sync
                 correlation = self.phy.correlate_with_codeword(
@@ -262,7 +369,9 @@ class RxWorker(Process):
                             ok=False,
                             reason="fine_no_peak",
                             times_ms=times_ms,
+                            outbox=debug_outbox,
                         )
+                    self._flush_debug_outbox(debug_outbox)
                     continue
 
                 start_of_data_index = self.phy.peak_to_start(
@@ -294,7 +403,9 @@ class RxWorker(Process):
                         ok=False,
                         reason="agc_invalid_gain",
                         times_ms=times_ms,
+                        outbox=debug_outbox,
                     )
+                    self._flush_debug_outbox(debug_outbox)
                     continue
                 agc_time = time.perf_counter_ns()
                 times_ms["agc"] = (agc_time - remove_codeword_time) * 10e-6
@@ -330,13 +441,16 @@ class RxWorker(Process):
                             seq=seq,
                             plot="correlation",
                             data=correlation[: self.debug_corr_slice_len],
+                            outbox=debug_outbox,
                         )
                     self._emit_rx_debug(
                         seq=seq,
                         ok=False,
                         reason="header_decode_failed",
                         times_ms=times_ms,
+                        outbox=debug_outbox,
                     )
+                    self._flush_debug_outbox(debug_outbox)
                     continue
 
                 payload_complex = payload_input[header_symbol_count:]
@@ -362,13 +476,16 @@ class RxWorker(Process):
                             seq=seq,
                             plot="correlation",
                             data=correlation[: self.debug_corr_slice_len],
+                            outbox=debug_outbox,
                         )
                     self._emit_rx_debug(
                         seq=seq,
                         ok=False,
                         reason="header_decode_failed",
                         times_ms=times_ms,
+                        outbox=debug_outbox,
                     )
+                    self._flush_debug_outbox(debug_outbox)
                     continue
                 else:
                     logger.info(f"Received metadata: {metadata}")
@@ -380,24 +497,42 @@ class RxWorker(Process):
                     )
 
                 times_ms["total"] = (time.perf_counter_ns() - start_time) * 10e-6
+                if eye_traces_pre is not None and seq % self.debug_eye_every_n == 0:
+                    self._emit_rx_debug_plot(
+                        seq=seq,
+                        plot="eye_pre_ted",
+                        data=eye_traces_pre[: self.debug_pll_stat_slice_len],
+                        outbox=debug_outbox,
+                    )
+                if eye_traces_post is not None and seq % self.debug_eye_every_n == 0:
+                    self._emit_rx_debug_plot(
+                        seq=seq,
+                        plot="eye_post_ted",
+                        data=eye_traces_post[: self.debug_pll_stat_slice_len],
+                        outbox=debug_outbox,
+                    )
+
                 if seq % self.debug_plot_every_n == 0:
                     self._emit_rx_debug_plot(
                         seq=seq,
                         plot="correlation",
                         data=correlation[: self.debug_corr_slice_len],
+                        outbox=debug_outbox,
                     )
 
-                # Only send full PLL internals for frames that actually decode.
-                self._emit_rx_debug_plot(
-                    seq=seq,
-                    plot="pll_error",
-                    data=pll_error[: self.debug_pll_stat_slice_len],
-                )
-                self._emit_rx_debug_plot(
-                    seq=seq,
-                    plot="pll_theta",
-                    data=pll_theta[: self.debug_pll_stat_slice_len],
-                )
+                if seq % self.debug_plot_every_n == 0:
+                    self._emit_rx_debug_plot(
+                        seq=seq,
+                        plot="pll_error",
+                        data=pll_error[: self.debug_pll_stat_slice_len],
+                        outbox=debug_outbox,
+                    )
+                    self._emit_rx_debug_plot(
+                        seq=seq,
+                        plot="pll_theta",
+                        data=pll_theta[: self.debug_pll_stat_slice_len],
+                        outbox=debug_outbox,
+                    )
                 if seq % self.debug_success_every_n == 0:
                     self._emit_rx_debug(
                         seq=seq,
@@ -405,6 +540,7 @@ class RxWorker(Process):
                         reason="ok",
                         times_ms=times_ms,
                         metadata=metadata,
+                        outbox=debug_outbox,
                     )
 
                 logger.info(
@@ -432,29 +568,32 @@ class RxWorker(Process):
                     ok=False,
                     reason="exception",
                     times_ms=times_ms,
+                    outbox=debug_outbox,
                 )
+                self._flush_debug_outbox(debug_outbox)
                 continue
 
-            try:
-                self._drain_control_queue()
-                self.gui_queue.put_nowait(
-                    {
-                        "type": "rx_update",
-                        "matched_filtered_preview": matched_filtered_data[
-                            self.config.pll_preamble_length :
-                        ][: self.debug_symbol_slice_len],
-                        "phase_locked_preview": phase_locked_data[
-                            self.config.pll_preamble_length :
-                        ][: self.debug_symbol_slice_len],
-                        "rx_metadata": metadata,
-                        "rx_image": decoded_image,
-                        "rx_payload": framed_payload,
-                        # "decoded_data": decoded_data,
-                    }
-                )
-            except Full:
+            self._drain_control_queue()
+            sent = self._send_gui_message(
+                {
+                    "type": "rx_update",
+                    "matched_filtered_preview": matched_filtered_data[
+                        self.config.pll_preamble_length :
+                    ][: self.debug_symbol_slice_len],
+                    "phase_locked_preview": phase_locked_data[
+                        self.config.pll_preamble_length :
+                    ][: self.debug_symbol_slice_len],
+                    "rx_metadata": metadata,
+                    "rx_image": decoded_image,
+                    "rx_payload": framed_payload,
+                    # "decoded_data": decoded_data,
+                },
+                high_priority=True,
+            )
+            if not sent:
                 logger.warning("Dropping RX GUI frame")
-                pass
+
+            self._flush_debug_outbox(debug_outbox)
 
     def _drain_control_queue(self) -> None:
         while True:
