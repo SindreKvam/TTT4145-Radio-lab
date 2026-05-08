@@ -322,7 +322,7 @@ class LiveDashboard(QMainWindow):
         if self.rx_correlation is not None:
             self.rx_correlation_curve.setData(
                 x=np.arange(0, len(self.rx_correlation), 1),
-                y=self.rx_correlation,
+                y=10 * np.log10(self.rx_correlation),
             )
 
         # Update PLL phase error plot
